@@ -1,7 +1,7 @@
 name: Release Workflow (Hacker Route)
 
 on:
-  workflow_dispatch: # 手動実行用
+  workflow_dispatch:
 
 jobs:
   build_ios:
@@ -14,16 +14,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm' # キャッシュを利用しつつ安定させる
 
-      - name: Install dependencies
+      - name: Install dependencies (Clean & Force)
         run: |
-          npm install --legacy-peer-deps
+          # 以前の残骸を掃除し、不整合を無視してインストール
+          npm install --force --legacy-peer-deps
           cd ios && pod install && cd ..
 
       - name: Build iOS App (No Signing)
         run: |
-          xcodebuild -workspace ios/MyLLM.xcworkspace \
-            -scheme MyLLM \
+          # アプリ名を「MyLLM」に変更していることに合わせたビルド命令
+          xcodebuild -workspace ios/pocketpal.xcworkspace \
+            -scheme pocketpal \
             -configuration Release \
             -archivePath ios/MyLLM.xcarchive \
             -sdk iphoneos \
@@ -34,12 +37,12 @@ jobs:
       - name: Export IPA
         run: |
           mkdir -p build/ios
-          mv ios/MyLLM.xcarchive/Products/Applications/MyLLM.app build/ios/
-          # SideStore用には.appをフォルダに入れてzip/ipa化する処理
-          cd build/ios
+          # 生成された.appを探してPayloadに格納
+          APP_PATH=$(find ios/MyLLM.xcarchive -name "*.app")
           mkdir Payload
-          cp -r MyLLM.app Payload/
+          cp -r "$APP_PATH" Payload/
           zip -r MyLLM.ipa Payload
+          mv MyLLM.ipa build/ios/
           
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
