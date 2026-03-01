@@ -21,12 +21,13 @@ jobs:
           yarn install --network-timeout 1000000
           cd ios && pod install && cd ..
 
-      - name: Build iOS App (No Signing)
+      - name: Build and Export
         run: |
+          # 1. 設計図の特定
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
-          # アーカイブを直下に作成
+          # 2. ビルド（アーカイブ作成）
           xcodebuild -workspace "$WORKSPACE_PATH" \
             -scheme "$SCHEME_NAME" \
             -configuration Release \
@@ -36,20 +37,17 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             clean archive
 
-      - name: Export IPA (The Final Strategy)
-        run: |
+          # 3. 直後に実体を抜き出す
           mkdir -p Payload
+          # アーカイブの中身を深く、しつこく探し出し、見つかった .app をすべて Payload へ
+          find ./MyLLM.xcarchive -name "*.app" -type d -print -exec cp -r {} Payload/ \;
           
-          # 【重要】パスを決め打ちせず、アーカイブ内から .app フォルダを全探索してコピー
-          # これにより、内部構造がどうあれ実体を確実にキャッチします
-          find ./MyLLM.xcarchive -name "*.app" -type d -exec cp -r {} ./Payload/ \;
+          # 4. 中身の確認（0バイトでないかログでチェック）
+          du -sh Payload/* || echo "Payload is empty"
           
-          # 内容物の確認（ここでファイルサイズが表示されれば勝ちです）
-          du -sh ./Payload/*
-          
-          # IPAとしてパッキング
+          # 5. IPAとしてパッキング
           zip -r MyLLM.ipa Payload
-          
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
