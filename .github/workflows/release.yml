@@ -1,4 +1,4 @@
-name: Release Workflow (All-in-One Hacker Route)
+name: Release Workflow (Ultimate Local Mode)
 
 on:
   workflow_dispatch:
@@ -20,10 +20,9 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      - name: 🚨 The Firebase Eradicator (Auto-Fix Everything)
+      - name: 🚨 The Firebase Eradicator v2 (Fix Build Error)
         run: |
           echo "🔥 1. Preventing iOS Native Auto-linking..."
-          # React NativeがFirebaseの機能を取り込むのを強制的に遮断します
           node -e "
             const fs = require('fs');
             let config = {};
@@ -37,13 +36,15 @@ jobs:
             fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
           "
           
-          echo "🔥 2. iOS Native: Purging Firebase from AppDelegate..."
-          # AppDelegateファイル内のFirebase起動コードを「全自動で」コメントアウトします
+          echo "🔥 2. iOS Native: Purging Firebase from AppDelegate completely..."
+          # AppDelegate.swift から import を物理的に行ごと削除（これが今回のビルドエラーの特効薬）
+          sed -i '' '/import RNFBAppCheck/d' ios/PocketPal/AppDelegate.swift || true
+          sed -i '' '/import Firebase/d' ios/PocketPal/AppDelegate.swift || true
+          # 初期化コードも無効化
           sed -i '' 's/RNFBAppCheckModule.sharedInstance()/\/\/ RNFBAppCheckModule.sharedInstance()/g' ios/PocketPal/AppDelegate.swift || true
           sed -i '' 's/FirebaseApp.configure()/\/\/ FirebaseApp.configure()/g' ios/PocketPal/AppDelegate.swift || true
           
-          echo "🔥 3. JS: Overwriting Firebase modules with indestructible Proxy mock..."
-          # アプリ側が「Firebaseがない！」とパニックを起こさないよう、絶対にエラーを吐かない「最強のダミー機能」を生成してすり替えます
+          echo "🔥 3. JS: Mocking Firebase to prevent JS panic..."
           cat << 'EOF' > proxy-mock.js
           const universalMock = new Proxy(() => universalMock, {
             get: (target, prop) => {
@@ -62,8 +63,6 @@ jobs:
           cp proxy-mock.js node_modules/@react-native-firebase/app/lib/index.js
           cp proxy-mock.js node_modules/@react-native-firebase/app-check/lib/index.js
           cp proxy-mock.js node_modules/@react-native-firebase/analytics/lib/index.js
-          
-          echo "✅ Eradication complete. Firebase is dead."
 
       - name: Install iOS Pods
         run: |
@@ -79,15 +78,6 @@ jobs:
           mkdir -p ios/Config
           touch ios/Config/Env.xcconfig
           echo "// Dummy config" > ios/Config/Env.xcconfig
-          
-          mkdir -p ios
-          cat << 'EOF' > ios/GoogleService-Info.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict><key>CLIENT_ID</key><string>dummy</string></dict>
-          </plist>
-          EOF
 
       - name: Enable iTunes File Sharing
         run: |
@@ -114,7 +104,6 @@ jobs:
         run: |
           mkdir -p Payload
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
-          cp ios/GoogleService-Info.plist Payload/*.app/ || true
           
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
