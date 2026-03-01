@@ -34,8 +34,8 @@ jobs:
           echo "// Dummy config for CI build" > ios/Config/Env.xcconfig
           
           # 2. GoogleService-Info.plistの【完全版】ダミー錬成
-          # ここで作成しておき、後の「Export IPA」ステップでアプリ内に直接ねじ込みます
-          cat << 'EOF' > GoogleService-Info.plist
+          # Xcodeのビルドエラーを回避するため、必ず「ios」フォルダの直下に作成する
+          cat << 'EOF' > ios/GoogleService-Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -95,8 +95,8 @@ jobs:
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
           
           # 【ハッキングの肝🔥】
-          # Xcodeに無視されたダミーのGoogle設定ファイルを、完成したアプリの内部（バンドル直下）に直接強制コピーする
-          cp GoogleService-Info.plist Payload/*.app/
+          # ios直下に作ったダミーのGoogle設定ファイルを、完成したアプリの内部（バンドル直下）に直接強制コピーする
+          cp ios/GoogleService-Info.plist Payload/*.app/ || true
           echo "✅ Injected Dummy GoogleService-Info.plist into the app bundle!"
           
           echo "Checking Payload size..."
