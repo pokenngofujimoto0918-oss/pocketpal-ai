@@ -21,15 +21,17 @@ jobs:
           yarn install --network-timeout 1000000
           cd ios && pod install && cd ..
 
-      - name: Build iOS App (Raw Build Method)
+      - name: Build iOS App (Targeting Main App)
         run: |
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
-          SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
-          # archiveではなく通常の「build」を実行し、出力先を ./build_output に強制指定する
+          # 念のため、どんな設計図が入っているかログに出力
+          xcodebuild -workspace "$WORKSPACE_PATH" -list
+          
+          # 【最重要】「PocketPal」を名指しして本編のビルドを強制する
           xcodebuild build \
             -workspace "$WORKSPACE_PATH" \
-            -scheme "$SCHEME_NAME" \
+            -scheme PocketPal \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ./build_output \
@@ -41,21 +43,19 @@ jobs:
         run: |
           mkdir -p Payload
           
-          # build_output 内の Release-iphoneos フォルダに生身の .app が生成されるので、それをコピー
-          find ./build_output/Build/Products/Release-iphoneos -name "*.app" -type d -exec cp -R {} Payload/ \;
+          # build_output 内から .app を確実に抽出
+          find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
           
-          # 中身のサイズ確認
+          # サイズチェック
           echo "Checking Payload size..."
           du -sh Payload/
           
-          # もし中身が1MB未満（空箱）なら、緑のチェックをつけずにエラーで止める安全装置
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
-            echo "Error: Payload is too small ($SIZE_KB KB). App file is missing!"
+            echo "Error: Payload is too small ($SIZE_KB KB). The real app was still not built!"
             exit 1
           fi
           
-          # IPAとしてパッキング
           zip -r MyLLM.ipa Payload
 
       - name: Upload Artifact
