@@ -21,32 +21,41 @@ jobs:
           yarn install --network-timeout 1000000
           cd ios && pod install && cd ..
 
-      - name: Build and Force Export
+      - name: Build iOS App (Raw Build Method)
         run: |
-          # 1. 設計図の自動特定
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
-          # 2. ビルド（アーカイブ作成）
-          xcodebuild -workspace "$WORKSPACE_PATH" \
+          # archiveではなく通常の「build」を実行し、出力先を ./build_output に強制指定する
+          xcodebuild build \
+            -workspace "$WORKSPACE_PATH" \
             -scheme "$SCHEME_NAME" \
             -configuration Release \
-            -archivePath ./MyLLM.xcarchive \
             -sdk iphoneos \
+            -derivedDataPath ./build_output \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_STYLE=Manual \
-            clean archive
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
 
-          # 3. 【最重要】アーカイブの中から「.app」フォルダを力技で見つける
+      - name: Export IPA
+        run: |
           mkdir -p Payload
-          # 構造を無視して「.app」で終わるフォルダを探し、Payloadへコピー
-          find ./MyLLM.xcarchive -name "*.app" -type d -print0 | xargs -0 -I {} cp -R "{}" Payload/
           
-          # 4. 中身が空でないかサイズを表示（ここが0Bなら失敗）
+          # build_output 内の Release-iphoneos フォルダに生身の .app が生成されるので、それをコピー
+          find ./build_output/Build/Products/Release-iphoneos -name "*.app" -type d -exec cp -R {} Payload/ \;
+          
+          # 中身のサイズ確認
           echo "Checking Payload size..."
           du -sh Payload/
           
-          # 5. IPA作成
+          # もし中身が1MB未満（空箱）なら、緑のチェックをつけずにエラーで止める安全装置
+          SIZE_KB=$(du -sk Payload | cut -f1)
+          if [ "$SIZE_KB" -lt 1000 ]; then
+            echo "Error: Payload is too small ($SIZE_KB KB). App file is missing!"
+            exit 1
+          fi
+          
+          # IPAとしてパッキング
           zip -r MyLLM.ipa Payload
 
       - name: Upload Artifact
