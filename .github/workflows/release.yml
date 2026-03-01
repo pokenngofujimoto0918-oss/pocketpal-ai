@@ -13,20 +13,26 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # 最新の 22系に指定
+          node-version: '22'
 
       - name: Install dependencies (Yarn Strategy)
         run: |
-          # npmを完全に無視し、yarnでクリーンインストール
           corepack enable
           yarn install --network-timeout 1000000
           cd ios && pod install && cd ..
 
       - name: Build iOS App (No Signing)
         run: |
-          # プロジェクト構造に合わせて確実にビルド
-          xcodebuild -workspace ios/PocketPalAI.xcworkspace \
-            -scheme PocketPalAI \
+          # 存在する.xcworkspaceを自動で見つける
+          WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
+          # その中にあるスキーム名を自動で抽出する
+          SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | sed -n '/Schemes:/,$p' | sed -n '2p' | xstrip || echo "pocketpal")
+          
+          echo "Found Workspace: $WORKSPACE_PATH"
+          echo "Found Scheme: $SCHEME_NAME"
+
+          xcodebuild -workspace "$WORKSPACE_PATH" \
+            -scheme "$SCHEME_NAME" \
             -configuration Release \
             -archivePath ios/MyLLM.xcarchive \
             -sdk iphoneos \
