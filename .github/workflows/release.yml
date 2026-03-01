@@ -51,6 +51,20 @@ jobs:
           </plist>
           EOF
 
+      - name: Enable iTunes File Sharing (Sandbox Breakthrough)
+        run: |
+          # Info.plistの特定（確実を期すためfindを使用）
+          PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
+          echo "Target Plist: $PLIST_PATH"
+          
+          # ファイルアプリへのフォルダ公開を有効化
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
+          
+          # フォルダ内のファイルを直接開く権限を付与
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
+          
+          echo "✅ Info.plist modified successfully for local file sharing!"
+
       - name: Build iOS App (Targeting Main App)
         run: |
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
