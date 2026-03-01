@@ -26,33 +26,33 @@ jobs:
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
-          # アーカイブ作成
+          # 成果物の場所を ./output に固定する
           xcodebuild -workspace "$WORKSPACE_PATH" \
             -scheme "$SCHEME_NAME" \
             -configuration Release \
-            -archivePath ios/MyLLM.xcarchive \
+            -archivePath ./MyLLM.xcarchive \
             -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_STYLE=Manual \
             clean archive
 
-      - name: Export IPA
+      - name: Export IPA (Force Catch)
         run: |
-          mkdir -p build/ios
           mkdir -p Payload
+          # アーカイブ内の Applications 直下にある .app を強制的に Payload へコピー
+          cp -r ./MyLLM.xcarchive/Products/Applications/*.app ./Payload/
           
-          # 【重要】特定のパスを狙わず、iosフォルダ内すべての .app フォルダを検索して Payload にコピー
-          find ios -name "*.app" -type d -exec cp -r {} Payload/ \;
+          # コピーが成功したかサイズでチェック（1MB以下なら失敗とみなす）
+          APP_SIZE=$(du -sk Payload | cut -f1)
+          if [ "$APP_SIZE" -lt 1000 ]; then
+            echo "Error: App content is missing! (Size: ${APP_SIZE}KB)"
+            exit 1
+          fi
           
-          # 確実にコピーされたかログで確認
-          ls -R Payload
-          
-          # IPAとしてパッキング
           zip -r MyLLM.ipa Payload
-          mv MyLLM.ipa build/ios/
           
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: MyLLM-IPA
-          path: build/ios/MyLLM.ipa
+          path: MyLLM.ipa
