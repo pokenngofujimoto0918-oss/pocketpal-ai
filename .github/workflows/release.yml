@@ -21,32 +21,35 @@ jobs:
           yarn install --network-timeout 1000000
           cd ios && pod install && cd ..
 
+      - name: Fix Node Path for Xcode
+        run: |
+          # Xcodeの内部スクリプトがNodeを見失うエラー（Exit 65の最大の原因）を物理的に防ぐ
+          sudo ln -s $(which node) /usr/local/bin/node || true
+          sudo ln -s $(which yarn) /usr/local/bin/yarn || true
+
       - name: Build iOS App (Targeting Main App)
         run: |
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           
-          # 念のため、どんな設計図が入っているかログに出力
-          xcodebuild -workspace "$WORKSPACE_PATH" -list
-          
-          # 【最重要】「PocketPal」を名指しして本編のビルドを強制する
+          # 本命「PocketPal」を、確実にiPad用（generic/platform=iOS）としてビルド
           xcodebuild build \
             -workspace "$WORKSPACE_PATH" \
             -scheme PocketPal \
             -configuration Release \
             -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -derivedDataPath ./build_output \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            EXCLUDED_ARCHS="x86_64"
 
       - name: Export IPA
         run: |
           mkdir -p Payload
           
-          # build_output 内から .app を確実に抽出
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
           
-          # サイズチェック
           echo "Checking Payload size..."
           du -sh Payload/
           
