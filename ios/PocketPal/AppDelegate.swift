@@ -19,8 +19,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // Initialize Firebase
     // This is used exclusively for sending model benchmarks (with user consent) to Firebase.
     // Firebase is used for App Check functionality, allowing unauthenticated users to submit their benchmark data securely.
-    RNFBAppCheckModule.sharedInstance() 
-    FirebaseApp.configure()
+    // RNFBAppCheckModule.sharedInstance() 
+    // FirebaseApp.configure()
 
     let delegate = ReactNativeDelegate()
     let factory = RCTReactNativeFactory(delegate: delegate)
