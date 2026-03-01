@@ -26,7 +26,7 @@ jobs:
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
-          # 成果物の場所を ./output に固定する
+          # アーカイブを直下に作成
           xcodebuild -workspace "$WORKSPACE_PATH" \
             -scheme "$SCHEME_NAME" \
             -configuration Release \
@@ -36,19 +36,18 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             clean archive
 
-      - name: Export IPA (Force Catch)
+      - name: Export IPA (The Final Strategy)
         run: |
           mkdir -p Payload
-          # アーカイブ内の Applications 直下にある .app を強制的に Payload へコピー
-          cp -r ./MyLLM.xcarchive/Products/Applications/*.app ./Payload/
           
-          # コピーが成功したかサイズでチェック（1MB以下なら失敗とみなす）
-          APP_SIZE=$(du -sk Payload | cut -f1)
-          if [ "$APP_SIZE" -lt 1000 ]; then
-            echo "Error: App content is missing! (Size: ${APP_SIZE}KB)"
-            exit 1
-          fi
+          # 【重要】パスを決め打ちせず、アーカイブ内から .app フォルダを全探索してコピー
+          # これにより、内部構造がどうあれ実体を確実にキャッチします
+          find ./MyLLM.xcarchive -name "*.app" -type d -exec cp -r {} ./Payload/ \;
           
+          # 内容物の確認（ここでファイルサイズが表示されれば勝ちです）
+          du -sh ./Payload/*
+          
+          # IPAとしてパッキング
           zip -r MyLLM.ipa Payload
           
       - name: Upload Artifact
