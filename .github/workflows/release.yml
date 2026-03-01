@@ -1,4 +1,4 @@
-name: Release Workflow (Hacker Route)
+name: Release Workflow (All-in-One Hacker Route)
 
 on:
   workflow_dispatch:
@@ -15,10 +15,58 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies (Yarn Strategy)
+      - name: Install JS dependencies (Yarn)
         run: |
           corepack enable
           yarn install --network-timeout 1000000
+
+      - name: 🚨 The Firebase Eradicator (Auto-Fix Everything)
+        run: |
+          echo "🔥 1. Preventing iOS Native Auto-linking..."
+          # React NativeがFirebaseの機能を取り込むのを強制的に遮断します
+          node -e "
+            const fs = require('fs');
+            let config = {};
+            if (fs.existsSync('react-native.config.js')) {
+              try { config = require('./react-native.config.js'); } catch(e) {}
+            }
+            config.dependencies = config.dependencies || {};
+            ['app', 'app-check', 'analytics'].forEach(mod => {
+              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
+            });
+            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
+          "
+          
+          echo "🔥 2. iOS Native: Purging Firebase from AppDelegate..."
+          # AppDelegateファイル内のFirebase起動コードを「全自動で」コメントアウトします
+          sed -i '' 's/RNFBAppCheckModule.sharedInstance()/\/\/ RNFBAppCheckModule.sharedInstance()/g' ios/PocketPal/AppDelegate.swift || true
+          sed -i '' 's/FirebaseApp.configure()/\/\/ FirebaseApp.configure()/g' ios/PocketPal/AppDelegate.swift || true
+          
+          echo "🔥 3. JS: Overwriting Firebase modules with indestructible Proxy mock..."
+          # アプリ側が「Firebaseがない！」とパニックを起こさないよう、絶対にエラーを吐かない「最強のダミー機能」を生成してすり替えます
+          cat << 'EOF' > proxy-mock.js
+          const universalMock = new Proxy(() => universalMock, {
+            get: (target, prop) => {
+              if (prop === 'then') return undefined;
+              return universalMock;
+            },
+            apply: () => universalMock
+          });
+          module.exports = universalMock;
+          EOF
+          
+          mkdir -p node_modules/@react-native-firebase/app/lib
+          mkdir -p node_modules/@react-native-firebase/app-check/lib
+          mkdir -p node_modules/@react-native-firebase/analytics/lib
+          
+          cp proxy-mock.js node_modules/@react-native-firebase/app/lib/index.js
+          cp proxy-mock.js node_modules/@react-native-firebase/app-check/lib/index.js
+          cp proxy-mock.js node_modules/@react-native-firebase/analytics/lib/index.js
+          
+          echo "✅ Eradication complete. Firebase is dead."
+
+      - name: Install iOS Pods
+        run: |
           cd ios && pod install && cd ..
 
       - name: Fix Node Path for Xcode
@@ -26,70 +74,30 @@ jobs:
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
-      - name: Create missing config files (Env & Firebase)
+      - name: Create missing config files
         run: |
-          # 1. Env.xcconfigのダミー錬成
           mkdir -p ios/Config
           touch ios/Config/Env.xcconfig
-          echo "// Dummy config for CI build" > ios/Config/Env.xcconfig
+          echo "// Dummy config" > ios/Config/Env.xcconfig
           
-          # 2. GoogleService-Info.plistの【完全版】ダミー錬成
-          # Firebaseの厳しいチェックを完全にすり抜けるための偽造ファイル
+          mkdir -p ios
           cat << 'EOF' > ios/GoogleService-Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
-          <dict>
-            <key>CLIENT_ID</key>
-            <string>dummy.apps.googleusercontent.com</string>
-            <key>REVERSED_CLIENT_ID</key>
-            <string>com.googleusercontent.apps.dummy</string>
-            <key>API_KEY</key>
-            <string>dummy_api_key_1234567890</string>
-            <key>GCM_SENDER_ID</key>
-            <string>1234567890</string>
-            <key>PLIST_VERSION</key>
-            <string>1</string>
-            <key>BUNDLE_ID</key>
-            <string>ai.pocketpal.VCFA343Q28</string>
-            <key>PROJECT_ID</key>
-            <string>dummy-project</string>
-            <key>STORAGE_BUCKET</key>
-            <string>dummy-project.appspot.com</string>
-            <key>IS_ADS_ENABLED</key>
-            <false/>
-            <key>IS_ANALYTICS_ENABLED</key>
-            <false/>
-            <key>IS_APPINVITE_ENABLED</key>
-            <false/>
-            <key>IS_GCM_ENABLED</key>
-            <false/>
-            <key>IS_SIGNIN_ENABLED</key>
-            <false/>
-            <key>GOOGLE_APP_ID</key>
-            <string>1:1234567890:ios:abcdef123456</string>
-          </dict>
+          <dict><key>CLIENT_ID</key><string>dummy</string></dict>
           </plist>
           EOF
 
-      - name: Enable iTunes File Sharing (Sandbox Breakthrough)
+      - name: Enable iTunes File Sharing
         run: |
-          # Info.plistの特定
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
-          echo "Target Plist: $PLIST_PATH"
-          
-          # ファイルアプリへのフォルダ公開を有効化
           /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
-          
-          # フォルダ内のファイルを直接開く権限を付与
           /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
-          
-          echo "✅ Info.plist modified successfully for local file sharing!"
 
-      - name: Build iOS App (Targeting Main App)
+      - name: Build iOS App
         run: |
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
-          
           xcodebuild build \
             -workspace "$WORKSPACE_PATH" \
             -scheme PocketPal \
@@ -97,32 +105,22 @@ jobs:
             -sdk iphoneos \
             -destination "generic/platform=iOS" \
             -derivedDataPath ./build_output \
-            -CODE_SIGNING_ALLOWED=NO \
-            -CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             EXCLUDED_ARCHS="x86_64"
 
       - name: Export IPA
         run: |
           mkdir -p Payload
-          
-          # ビルド済みの.appフォルダをPayloadにコピー
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
-          
-          # 【ハッキングの肝🔥】
-          # ios直下に作ったダミーのGoogle設定ファイルを、完成したアプリの内部（バンドル直下）に直接強制コピーする
           cp ios/GoogleService-Info.plist Payload/*.app/ || true
-          echo "✅ Injected Dummy GoogleService-Info.plist into the app bundle!"
-          
-          echo "Checking Payload size..."
-          du -sh Payload/
           
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
-            echo "Error: Payload is too small ($SIZE_KB KB). The real app was still not built!"
+            echo "Error: Payload is too small ($SIZE_KB KB)."
             exit 1
           fi
-          
           zip -r MyLLM.ipa Payload
 
       - name: Upload Artifact
