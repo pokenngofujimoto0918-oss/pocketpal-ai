@@ -25,8 +25,8 @@ jobs:
       - name: Build iOS App (No Signing)
         run: |
           # プロジェクト構造に合わせて確実にビルド
-          xcodebuild -workspace ios/pocketpal.xcworkspace \
-            -scheme pocketpal \
+          xcodebuild -workspace ios/PocketPalAI.xcworkspace \
+            -scheme PocketPalAI \
             -configuration Release \
             -archivePath ios/MyLLM.xcarchive \
             -sdk iphoneos \
