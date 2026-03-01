@@ -26,9 +26,6 @@ jobs:
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
-          echo "Found Workspace: $WORKSPACE_PATH"
-          echo "Found Scheme: $SCHEME_NAME"
-
           xcodebuild -workspace "$WORKSPACE_PATH" \
             -scheme "$SCHEME_NAME" \
             -configuration Release \
@@ -41,11 +38,11 @@ jobs:
       - name: Export IPA
         run: |
           mkdir -p build/ios
-          # アーカイブの中から .app ファイルを確実に探し出す
-          APP_PATH=$(find ios/MyLLM.xcarchive -name "*.app" -type d | head -n 1)
-          echo "App found at: $APP_PATH"
+          # 拡張子 .app のフォルダを全探索して特定
+          APP_PATH=$(find ios/MyLLM.xcarchive -name "*.app" -type d)
+          echo "Debug: Detected App Path -> $APP_PATH"
           
-          # Payloadフォルダを作成してIPA化（SideStore用）
+          # SideStore用の構造作成
           mkdir Payload
           cp -r "$APP_PATH" Payload/
           zip -r MyLLM.ipa Payload
