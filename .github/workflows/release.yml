@@ -21,9 +21,9 @@ jobs:
           yarn install --network-timeout 1000000
           cd ios && pod install && cd ..
 
-      - name: Build and Export
+      - name: Build and Force Export
         run: |
-          # 1. 設計図の特定
+          # 1. 設計図の自動特定
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
@@ -37,15 +37,16 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             clean archive
 
-          # 3. 直後に実体を抜き出す
+          # 3. 【最重要】アーカイブの中から「.app」フォルダを力技で見つける
           mkdir -p Payload
-          # アーカイブの中身を深く、しつこく探し出し、見つかった .app をすべて Payload へ
-          find ./MyLLM.xcarchive -name "*.app" -type d -print -exec cp -r {} Payload/ \;
+          # 構造を無視して「.app」で終わるフォルダを探し、Payloadへコピー
+          find ./MyLLM.xcarchive -name "*.app" -type d -print0 | xargs -0 -I {} cp -R "{}" Payload/
           
-          # 4. 中身の確認（0バイトでないかログでチェック）
-          du -sh Payload/* || echo "Payload is empty"
+          # 4. 中身が空でないかサイズを表示（ここが0Bなら失敗）
+          echo "Checking Payload size..."
+          du -sh Payload/
           
-          # 5. IPAとしてパッキング
+          # 5. IPA作成
           zip -r MyLLM.ipa Payload
 
       - name: Upload Artifact
