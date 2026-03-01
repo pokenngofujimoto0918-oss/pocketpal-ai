@@ -40,6 +40,16 @@ jobs:
           mkdir -p build/ios
           mkdir -p Payload
           
+          # アーカイブ内の Products/Applications フォルダから直接 .app をコピーする
+          # これが最も確実なパスです
+          cp -r ios/MyLLM.xcarchive/Products/Applications/*.app Payload/
+          
+          # 中身が空でないかサイズを確認
+          du -sh Payload/
+          
+          zip -r MyLLM.ipa Payload
+          mv MyLLM.ipa build/ios/
+          
           # アーカイブ内の .app フォルダを全探索し、直接 Payload にコピーする
           # ※ -exec cp -r {} を使うことで、変数渡しのミスを物理的に防ぎます
           find ios/MyLLM.xcarchive -name "*.app" -type d -exec cp -r {} Payload/ \;
