@@ -29,7 +29,7 @@ jobs:
           xcodebuild -workspace "$WORKSPACE_PATH" \
             -scheme "$SCHEME_NAME" \
             -configuration Release \
-            -archivePath ios/MyLLM.xcarchive \
+            -archivePath ios/Output.xcarchive \
             -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_STYLE=Manual \
@@ -40,24 +40,13 @@ jobs:
           mkdir -p build/ios
           mkdir -p Payload
           
-          # アーカイブ内の Products/Applications フォルダから直接 .app をコピーする
-          # これが最も確実なパスです
-          cp -r ios/MyLLM.xcarchive/Products/Applications/*.app Payload/
+          # アーカイブの名前が何であっても、中にある .app を確実に見つけてコピー
+          # ios/Output.xcarchive/Products/Applications/ の下を狙い撃ちします
+          find ios/Output.xcarchive/Products/Applications -name "*.app" -type d -exec cp -r {} Payload/ \;
           
-          # 中身が空でないかサイズを確認
-          du -sh Payload/
-          
-          zip -r MyLLM.ipa Payload
-          mv MyLLM.ipa build/ios/
-          
-          # アーカイブ内の .app フォルダを全探索し、直接 Payload にコピーする
-          # ※ -exec cp -r {} を使うことで、変数渡しのミスを物理的に防ぎます
-          find ios/MyLLM.xcarchive -name "*.app" -type d -exec cp -r {} Payload/ \;
-          
-          # 中身が空でないか確認（デバッグ用ログ）
+          # 中身が空でないかデバッグ確認
           ls -R Payload
           
-          # IPAとして圧縮
           zip -r MyLLM.ipa Payload
           mv MyLLM.ipa build/ios/
           
