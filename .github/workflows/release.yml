@@ -26,10 +26,11 @@ jobs:
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           SCHEME_NAME=$(xcodebuild -workspace "$WORKSPACE_PATH" -list | awk '/Schemes:/{flag=1;next} flag{print;exit}' | xargs)
           
+          # アーカイブ作成
           xcodebuild -workspace "$WORKSPACE_PATH" \
             -scheme "$SCHEME_NAME" \
             -configuration Release \
-            -archivePath ios/Output.xcarchive \
+            -archivePath ios/MyLLM.xcarchive \
             -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_STYLE=Manual \
@@ -40,13 +41,13 @@ jobs:
           mkdir -p build/ios
           mkdir -p Payload
           
-          # アーカイブの名前が何であっても、中にある .app を確実に見つけてコピー
-          # ios/Output.xcarchive/Products/Applications/ の下を狙い撃ちします
-          find ios/Output.xcarchive/Products/Applications -name "*.app" -type d -exec cp -r {} Payload/ \;
+          # 【重要】特定のパスを狙わず、iosフォルダ内すべての .app フォルダを検索して Payload にコピー
+          find ios -name "*.app" -type d -exec cp -r {} Payload/ \;
           
-          # 中身が空でないかデバッグ確認
+          # 確実にコピーされたかログで確認
           ls -R Payload
           
+          # IPAとしてパッキング
           zip -r MyLLM.ipa Payload
           mv MyLLM.ipa build/ios/
           
