@@ -23,15 +23,20 @@ jobs:
 
       - name: Fix Node Path for Xcode
         run: |
-          # Xcodeの内部スクリプトがNodeを見失うエラー（Exit 65の最大の原因）を物理的に防ぐ
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
+
+      - name: Create missing Config file (Fix for Exit 65)
+        run: |
+          # フォルダを作成し、空の Env.xcconfig を錬成してXcodeを納得させる
+          mkdir -p ios/Config
+          touch ios/Config/Env.xcconfig
+          echo "// Dummy config for CI build" > ios/Config/Env.xcconfig
 
       - name: Build iOS App (Targeting Main App)
         run: |
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
           
-          # 本命「PocketPal」を、確実にiPad用（generic/platform=iOS）としてビルド
           xcodebuild build \
             -workspace "$WORKSPACE_PATH" \
             -scheme PocketPal \
