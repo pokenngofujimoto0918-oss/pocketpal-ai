@@ -33,27 +33,33 @@ jobs:
           touch ios/Config/Env.xcconfig
           echo "// Dummy config for CI build" > ios/Config/Env.xcconfig
           
-          # 2. GoogleService-Info.plistのダミー錬成（エラーの真犯人を黙らせる）
-          cat <<EOF > ios/GoogleService-Info.plist
+          # 2. GoogleService-Info.plistの【完全版】ダミー錬成
+          # ここで作成しておき、後の「Export IPA」ステップでアプリ内に直接ねじ込みます
+          cat << 'EOF' > GoogleService-Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>GOOGLE_APP_ID</key>
-            <string>1:1234567890:ios:dummy</string>
-            <key>BUNDLE_ID</key>
-            <string>com.pocketpal.app</string>
-            <key>PROJECT_ID</key>
-            <string>dummy-project</string>
-            <key>API_KEY</key>
-            <string>dummy-api-key</string>
+            <key>CLIENT_ID</key><string>dummy.apps.googleusercontent.com</string>
+            <key>REVERSED_CLIENT_ID</key><string>com.googleusercontent.apps.dummy</string>
+            <key>API_KEY</key><string>dummy-api-key</string>
+            <key>GCM_SENDER_ID</key><string>123456789</string>
+            <key>PLIST_VERSION</key><string>1</string>
+            <key>BUNDLE_ID</key><string>ai.pocketpal</string>
+            <key>PROJECT_ID</key><string>dummy-project</string>
+            <key>IS_ADS_ENABLED</key><false/>
+            <key>IS_ANALYTICS_ENABLED</key><false/>
+            <key>IS_APPINVITE_ENABLED</key><true/>
+            <key>IS_GCM_ENABLED</key><true/>
+            <key>IS_SIGNIN_ENABLED</key><true/>
+            <key>GOOGLE_APP_ID</key><string>1:123456789:ios:dummy</string>
           </dict>
           </plist>
           EOF
 
       - name: Enable iTunes File Sharing (Sandbox Breakthrough)
         run: |
-          # Info.plistの特定（確実を期すためfindを使用）
+          # Info.plistの特定
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
           echo "Target Plist: $PLIST_PATH"
           
@@ -85,7 +91,13 @@ jobs:
         run: |
           mkdir -p Payload
           
+          # ビルド済みの.appフォルダをPayloadにコピー
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
+          
+          # 【ハッキングの肝🔥】
+          # Xcodeに無視されたダミーのGoogle設定ファイルを、完成したアプリの内部（バンドル直下）に直接強制コピーする
+          cp GoogleService-Info.plist Payload/*.app/
+          echo "✅ Injected Dummy GoogleService-Info.plist into the app bundle!"
           
           echo "Checking Payload size..."
           du -sh Payload/
