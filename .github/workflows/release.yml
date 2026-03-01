@@ -26,12 +26,30 @@ jobs:
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
-      - name: Create missing Config file (Fix for Exit 65)
+      - name: Create missing config files (Env & Firebase)
         run: |
-          # フォルダを作成し、空の Env.xcconfig を錬成してXcodeを納得させる
+          # 1. Env.xcconfigのダミー錬成
           mkdir -p ios/Config
           touch ios/Config/Env.xcconfig
           echo "// Dummy config for CI build" > ios/Config/Env.xcconfig
+          
+          # 2. GoogleService-Info.plistのダミー錬成（エラーの真犯人を黙らせる）
+          cat <<EOF > ios/GoogleService-Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>GOOGLE_APP_ID</key>
+            <string>1:1234567890:ios:dummy</string>
+            <key>BUNDLE_ID</key>
+            <string>com.pocketpal.app</string>
+            <key>PROJECT_ID</key>
+            <string>dummy-project</string>
+            <key>API_KEY</key>
+            <string>dummy-api-key</string>
+          </dict>
+          </plist>
+          EOF
 
       - name: Build iOS App (Targeting Main App)
         run: |
