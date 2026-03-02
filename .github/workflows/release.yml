@@ -1,4 +1,4 @@
-name: Release Workflow (Absolute Local Mode)
+name: Release Workflow (Pacifier Route)
 
 on:
   workflow_dispatch:
@@ -20,78 +20,9 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      - name: 🚨 The Absolute Eradicator v5 (Nuke BEFORE Pods)
+      - name: Install iOS Pods
         run: |
-          echo "🔥 1. JS: Nuke and Replace Firebase NPM packages (deep)..."
-          DUMMY_INDEX='const m = new Proxy(function(){return m;},{get:function(t,p){if(p==="then")return undefined;if(p==="default")return m;return m;}}); module.exports = m;'
-          DUMMY_PKG='{"name":"dummy","version":"99.0.0","main":"index.js","react-native":"index.js","browser":"index.js"}'
-          
-          if [ -d "node_modules/@react-native-firebase" ]; then
-            find node_modules/@react-native-firebase -mindepth 1 -maxdepth 1 -type d | while read pkg_dir; do
-              echo "Nuking $pkg_dir"
-              rm -rf "$pkg_dir"/*
-              echo "$DUMMY_PKG" > "$pkg_dir/package.json"
-              echo "$DUMMY_INDEX" > "$pkg_dir/index.js"
-              for subdir in lib src commonjs dist; do
-                mkdir -p "$pkg_dir/$subdir"
-                echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.js"
-                echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.native.js"
-              done
-            done
-          fi
-
-          echo "🔥 2. Preventing iOS Native Auto-linking..."
-          node -e "
-            const fs = require('fs');
-            const MODULES = ['app', 'app-check', 'analytics', 'crashlytics', 'perf'];
-            let raw = '{}';
-            if (fs.existsSync('react-native.config.js')) {
-              raw = fs.readFileSync('react-native.config.js', 'utf8').replace(/^\s*module\.exports\s*=\s*/, '').replace(/;?\s*$/, '');
-            }
-            let config = {};
-            try { config = eval('(' + raw + ')'); } catch(e) { config = {}; }
-            config.dependencies = config.dependencies || {};
-            MODULES.forEach(mod => {
-              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
-            });
-            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
-          "
-          
-          echo "🔥 3. iOS Native: Purging Firebase from AppDelegate..."
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            function walk(dir) {
-              let results = [];
-              if (!fs.existsSync(dir)) return results;
-              const list = fs.readdirSync(dir);
-              list.forEach(file => {
-                const fullPath = path.join(dir, file);
-                if (fs.statSync(fullPath).isDirectory()) {
-                  results = results.concat(walk(fullPath));
-                } else if (/AppDelegate\.(m|mm|swift)$/.test(file)) {
-                  results.push(fullPath);
-                }
-              });
-              return results;
-            }
-            const files = walk('./ios/PocketPal');
-            files.forEach(file => {
-              let content = fs.readFileSync(file, 'utf8');
-              content = content.replace(/^.*import\s+RNFBAppCheck.*$/gm, '');
-              content = content.replace(/^.*import\s+Firebase.*$/gm, '');
-              content = content.replace(/^.*#import\s+[<\"]Firebase.*[>\"].*$/gm, '');
-              content = content.replace(/^.*#import\s+[<\"]RNFBAppCheck.*[>\"].*$/gm, '');
-              content = content.replace(/FirebaseApp\.configure\(\)/g, '// FirebaseApp.configure()');
-              content = content.replace(/\[FIRApp configure\];?/g, '// [FIRApp configure]');
-              content = content.replace(/\[RNFBAppCheckModule\s+sharedInstance\];?/g, '// [RNFBAppCheckModule sharedInstance]');
-              content = content.replace(/RNFBAppCheckModule\.sharedInstance\(\)/g, '// RNFBAppCheckModule.sharedInstance()');
-              fs.writeFileSync(file, content);
-            });
-          "
-
-      - name: Install iOS Pods (Now 100% clean and Firebase-free)
-        run: |
+          # Firebaseも含め、すべて「通常通り」インストールしてパニックを防ぐ
           cd ios && pod install && cd ..
 
       - name: Fix Node Path for Xcode
@@ -105,6 +36,7 @@ jobs:
           touch ios/Config/Env.xcconfig
           echo "// Dummy config" > ios/Config/Env.xcconfig
           
+          # Xcodeのビルドエラー回避用の「抜け殻plist」
           cat << 'EOF' > ios/GoogleService-Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -118,6 +50,45 @@ jobs:
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
           /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
           /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
+
+      - name: 🕊️ The Firebase Pacifier (Peaceful Injection)
+        run: |
+          echo "🔥 Pacifying Firebase: Injecting dummy options instead of deleting..."
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            function walk(dir) {
+              let results = [];
+              if (!fs.existsSync(dir)) return results;
+              const list = fs.readdirSync(dir);
+              list.forEach(file => {
+                const fullPath = path.join(dir, file);
+                if (fs.statSync(fullPath).isDirectory()) {
+                  results = results.concat(walk(fullPath));
+                } else if (file === 'AppDelegate.swift') {
+                  results.push(fullPath);
+                }
+              });
+              return results;
+            }
+            const files = walk('./ios/PocketPal');
+            files.forEach(file => {
+              let content = fs.readFileSync(file, 'utf8');
+              
+              // FirebaseApp.configure() を、ダミーのオプションを使った安全な初期化にすり替える
+              const dummyInit = [
+                'let dummyOptions = FirebaseOptions(googleAppID: \"1:1234567890:ios:abcdef123456\", gcmSenderID: \"1234567890\")',
+                'dummyOptions.projectID = \"dummy-project\"',
+                'dummyOptions.apiKey = \"dummy_api_key_1234567890\"',
+                'dummyOptions.clientID = \"dummy.apps.googleusercontent.com\"',
+                'FirebaseApp.configure(options: dummyOptions)'
+              ].join('\n');
+              
+              content = content.replace(/FirebaseApp\.configure\(\)/g, dummyInit);
+              fs.writeFileSync(file, content);
+              console.log('✅ Pacified: ' + file);
+            });
+          "
 
       - name: Build iOS App
         run: |
