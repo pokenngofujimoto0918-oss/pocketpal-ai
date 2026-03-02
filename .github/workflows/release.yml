@@ -37,12 +37,20 @@ jobs:
           "
           
           echo "🔥 2. iOS Native: Purging Firebase from AppDelegate completely..."
-          # AppDelegate.swift から import を物理的に行ごと削除（これが今回のビルドエラーの特効薬）
-          sed -i '' '/import RNFBAppCheck/d' ios/PocketPal/AppDelegate.swift || true
-          sed -i '' '/import Firebase/d' ios/PocketPal/AppDelegate.swift || true
-          # 初期化コードも無効化
-          sed -i '' 's/RNFBAppCheckModule.sharedInstance()/\/\/ RNFBAppCheckModule.sharedInstance()/g' ios/PocketPal/AppDelegate.swift || true
-          sed -i '' 's/FirebaseApp.configure()/\/\/ FirebaseApp.configure()/g' ios/PocketPal/AppDelegate.swift || true
+          # AppDelegate.* (swift, mm, m) を探して、Firebase関連の行を物理削除・無効化
+          find ios -name "AppDelegate*" -type f | while read file; do
+            echo "Patching $file ..."
+            # Objective-C / Swift 両方の import 記述を削除
+            sed -i '' '/import RNFBAppCheck/d' "$file" || true
+            sed -i '' '/import Firebase/d' "$file" || true
+            sed -i '' '/#import <Firebase.h>/d' "$file" || true
+            sed -i '' '/#import <RNFBAppCheck\/RNFBAppCheckModule.h>/d' "$file" || true
+            
+            # 初期化コードを無効化
+            sed -i '' 's/RNFBAppCheckModule.sharedInstance()/\/\/ RNFBAppCheckModule.sharedInstance()/g' "$file" || true
+            sed -i '' 's/\[FIRApp configure\]/\/\/ \[FIRApp configure\]/g' "$file" || true
+            sed -i '' 's/FirebaseApp.configure()/\/\/ FirebaseApp.configure()/g' "$file" || true
+          done
           
           echo "🔥 3. JS: Mocking Firebase to prevent JS panic..."
           cat << 'EOF' > proxy-mock.js
@@ -78,6 +86,15 @@ jobs:
           mkdir -p ios/Config
           touch ios/Config/Env.xcconfig
           echo "// Dummy config" > ios/Config/Env.xcconfig
+          
+          # 【追加】Xcodeのビルドエラーを回避するための「抜け殻plist」
+          cat << 'EOF' > ios/GoogleService-Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict></dict>
+          </plist>
+          EOF
 
       - name: Enable iTunes File Sharing
         run: |
