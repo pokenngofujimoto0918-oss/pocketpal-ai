@@ -1,4 +1,4 @@
-name: Release Workflow (Ultimate Local Mode v4.1)
+name: Release Workflow (Ultimate Local Mode)
 
 on:
   workflow_dispatch:
@@ -20,7 +20,67 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      # ✅ 修正①：pod installをEradicatorより先に実行（本物Firebaseがある状態でPodを解決させる）
+      - name: 🚨 The Firebase Eradicator v4 (Bulletproof Native & JS Nuke)
+        run: |
+          echo "🔥 1. Preventing iOS Native Auto-linking..."
+          node -e "
+            const fs = require('fs');
+            let config = {};
+            if (fs.existsSync('react-native.config.js')) {
+              try { config = require('./react-native.config.js'); } catch(e) {}
+            }
+            config.dependencies = config.dependencies || {};
+            ['app', 'app-check', 'analytics', 'crashlytics', 'perf'].forEach(mod => {
+              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
+            });
+            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
+          "
+          
+          echo "🔥 2. iOS Native: Purging Firebase via Node.js (Immune to formatting issues)..."
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            function walk(dir) {
+              let results = [];
+              const list = fs.readdirSync(dir);
+              list.forEach(file => {
+                file = path.join(dir, file);
+                const stat = fs.statSync(file);
+                if (stat && stat.isDirectory()) {
+                  results = results.concat(walk(file));
+                } else if (file.includes('AppDelegate')) {
+                  results.push(file);
+                }
+              });
+              return results;
+            }
+            const files = walk('./ios');
+            files.forEach(file => {
+              let content = fs.readFileSync(file, 'utf8');
+              // import文を物理的に行ごと消去
+              content = content.replace(/^.*import\s+RNFBAppCheck.*$/gm, '');
+              content = content.replace(/^.*import\s+Firebase.*$/gm, '');
+              content = content.replace(/^.*#import\s+<Firebase.*$/gm, '');
+              content = content.replace(/^.*#import\s+<RNFBAppCheck.*$/gm, '');
+              // 起動コードをコメントアウト
+              content = content.replace(/RNFBAppCheckModule\.sharedInstance\(\)/g, '// RNFBAppCheckModule.sharedInstance()');
+              content = content.replace(/\[FIRApp configure\]/g, '// [FIRApp configure]');
+              content = content.replace(/FirebaseApp\.configure\(\)/g, '// FirebaseApp.configure()');
+              fs.writeFileSync(file, content);
+              console.log('✅ Patched: ' + file);
+            });
+          "
+          
+          echo "🔥 3. JS: Nuke and Replace Firebase NPM packages..."
+          if [ -d "node_modules/@react-native-firebase" ]; then
+            find node_modules/@react-native-firebase -mindepth 1 -maxdepth 1 -type d | while read pkg_dir; do
+              echo "Nuking $pkg_dir"
+              rm -rf "$pkg_dir"/*
+              echo '{"name":"dummy","version":"99.0.0","main":"index.js"}' > "$pkg_dir/package.json"
+              echo 'const m = new Proxy(function(){return m;},{get:function(t,p){if(p==="then")return undefined;if(p==="default")return m;return m;}}); module.exports = m;' > "$pkg_dir/index.js"
+            done
+          fi
+
       - name: Install iOS Pods
         run: |
           cd ios && pod install && cd ..
@@ -35,7 +95,7 @@ jobs:
           mkdir -p ios/Config
           touch ios/Config/Env.xcconfig
           echo "// Dummy config" > ios/Config/Env.xcconfig
-
+          
           cat << 'EOF' > ios/GoogleService-Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -49,152 +109,6 @@ jobs:
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
           /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
           /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
-
-      # ✅ 修正②：Eradicatorをpod installの後に実行
-      - name: 🚨 The Firebase Eradicator v4.1 (Bulletproof Native & JS Nuke)
-        run: |
-
-          # ---------------------------------------------------------------
-          # STEP 1: react-native.config.js でauto-linkingを無効化
-          # ✅ 修正：requireキャッシュ問題を避けるためfsで直接読み書き
-          # ---------------------------------------------------------------
-          echo "🔥 1. Preventing iOS Native Auto-linking..."
-          node -e "
-            const fs = require('fs');
-            const MODULES = ['app', 'app-check', 'analytics', 'crashlytics', 'perf'];
-            let raw = '{}';
-            if (fs.existsSync('react-native.config.js')) {
-              raw = fs.readFileSync('react-native.config.js', 'utf8')
-                .replace(/^\s*module\.exports\s*=\s*/,'')
-                .replace(/;?\s*$/,'');
-            }
-            let config = {};
-            try { config = eval('(' + raw + ')'); } catch(e) { config = {}; }
-            config.dependencies = config.dependencies || {};
-            MODULES.forEach(mod => {
-              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
-            });
-            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';\n');
-            console.log('✅ react-native.config.js updated');
-          "
-
-          # ---------------------------------------------------------------
-          # STEP 2: iOS Native コードからFirebaseを物理削除
-          # ✅ 修正：ブラケット記法・Swift版・mm拡張子も対応
-          # ---------------------------------------------------------------
-          echo "🔥 2. iOS Native: Purging Firebase via Node.js..."
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-
-            function walk(dir) {
-              let results = [];
-              if (!fs.existsSync(dir)) return results;
-              const list = fs.readdirSync(dir);
-              list.forEach(file => {
-                const fullPath = path.join(dir, file);
-                const stat = fs.statSync(fullPath);
-                if (stat && stat.isDirectory()) {
-                  results = results.concat(walk(fullPath));
-                } else if (/AppDelegate\.(m|mm|swift)$/.test(file)) {
-                  results.push(fullPath);
-                }
-              });
-              return results;
-            }
-
-            const files = walk('./ios');
-            if (files.length === 0) {
-              console.log('⚠️  No AppDelegate files found.');
-              process.exit(0);
-            }
-
-            files.forEach(file => {
-              let content = fs.readFileSync(file, 'utf8');
-
-              // import文の完全消去（Swift / ObjC / ObjC++ 全対応）
-              content = content.replace(/^.*import\s+RNFBAppCheck.*$/gm, '');
-              content = content.replace(/^.*import\s+Firebase.*$/gm, '');
-              content = content.replace(/^.*#import\s+[<\"]Firebase[>\"].*$/gm, '');
-              content = content.replace(/^.*#import\s+[<\"]RNFBAppCheck[>\"].*$/gm, '');
-              content = content.replace(/^.*#import\s+<Firebase\/.*>.*$/gm, '');
-
-              // 起動コードの無効化（Swift記法）
-              content = content.replace(/FirebaseApp\.configure\(\)/g, '// FirebaseApp.configure()');
-
-              // 起動コードの無効化（ObjC ブラケット記法・全パターン）
-              content = content.replace(/\[FIRApp configure\];?/g, '// [FIRApp configure];');
-              content = content.replace(/\[RNFBAppCheckModule\s+sharedInstance\];?/g, '// [RNFBAppCheckModule sharedInstance];');
-              content = content.replace(/RNFBAppCheckModule\.sharedInstance\(\)/g, '// RNFBAppCheckModule.sharedInstance()');
-
-              // Swift版AppCheck
-              content = content.replace(/RNFBAppCheck\.configure\(\)/g, '// RNFBAppCheck.configure()');
-
-              fs.writeFileSync(file, content);
-              console.log('✅ Patched: ' + file);
-            });
-          "
-
-          # ---------------------------------------------------------------
-          # STEP 3: Firebaseが残っていないかデバッグ確認（ビルド前の地雷チェック）
-          # ---------------------------------------------------------------
-          echo "🔥 3. Scanning for remaining Firebase references in native code..."
-          REMAINING=$(grep -r "FIRApp\|FirebaseApp\.configure\|RNFBAppCheck\|import Firebase" ios/ \
-            --include="*.m" --include="*.swift" --include="*.mm" -l 2>/dev/null || true)
-          if [ -n "$REMAINING" ]; then
-            echo "⚠️  WARNING: Firebase references still found in:"
-            echo "$REMAINING"
-            echo "Attempting deeper patch..."
-            # 見つかったファイルを追加でパッチ（フォールバック）
-            echo "$REMAINING" | while read -r leftover; do
-              node -e "
-                const fs = require('fs');
-                let c = fs.readFileSync('$leftover', 'utf8');
-                c = c.replace(/^.*FIRApp.*$/gm, '// [nuked by eradicator]');
-                c = c.replace(/^.*FirebaseApp\.configure.*$/gm, '// [nuked by eradicator]');
-                c = c.replace(/^.*RNFBAppCheck.*$/gm, '// [nuked by eradicator]');
-                c = c.replace(/^.*import Firebase.*$/gm, '// [nuked by eradicator]');
-                fs.writeFileSync('$leftover', c);
-                console.log('✅ Deep-patched: $leftover');
-              "
-            done
-          else
-            echo "✅ Clean! No Firebase references remain in native code."
-          fi
-
-          # ---------------------------------------------------------------
-          # STEP 4: JS / NPM パッケージの完全ダミー化
-          # ✅ 修正：lib/ src/ commonjs/ 等のサブディレクトリも完全消去
-          # ---------------------------------------------------------------
-          echo "🔥 4. JS: Nuke and Replace Firebase NPM packages (deep)..."
-          DUMMY_INDEX='const m = new Proxy(function(){return m;},{get:function(t,p){if(p==="then")return undefined;if(p==="default")return m;return m;}}); module.exports = m; module.exports.default = m;'
-          DUMMY_PKG='{"name":"dummy","version":"99.0.0","main":"index.js","react-native":"index.js","browser":"index.js"}'
-
-          if [ -d "node_modules/@react-native-firebase" ]; then
-            find node_modules/@react-native-firebase -mindepth 1 -maxdepth 1 -type d | while read pkg_dir; do
-              echo "Nuking $pkg_dir ..."
-
-              # パッケージ内を完全消去
-              rm -rf "${pkg_dir:?}"/*
-
-              # ルートのダミーファイルを配置
-              echo "$DUMMY_PKG"  > "$pkg_dir/package.json"
-              echo "$DUMMY_INDEX" > "$pkg_dir/index.js"
-
-              # ✅ 修正：Metroが引っ張りに来るサブパスも全て潰す
-              for subdir in lib src commonjs dist; do
-                mkdir -p "$pkg_dir/$subdir"
-                echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.js"
-                echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.native.js"
-              done
-
-              echo "  ✅ Done: $pkg_dir"
-            done
-          else
-            echo "⚠️  node_modules/@react-native-firebase not found. Skipping."
-          fi
-
-          echo "🎉 Firebase Eradicator v4.1 Complete!"
 
       - name: Build iOS App
         run: |
@@ -215,15 +129,13 @@ jobs:
         run: |
           mkdir -p Payload
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
-
+          
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
-            echo "❌ Error: Payload is too small ($SIZE_KB KB). Build likely failed silently."
+            echo "Error: Payload is too small ($SIZE_KB KB)."
             exit 1
           fi
-
           zip -r MyLLM.ipa Payload
-          echo "✅ IPA created successfully (${SIZE_KB} KB)"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
