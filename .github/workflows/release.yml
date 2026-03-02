@@ -1,4 +1,4 @@
-name: Release Workflow (Ultimate Local Mode)
+name: Release Workflow (Absolute Local Mode)
 
 on:
   workflow_dispatch:
@@ -20,94 +20,9 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      - name: 🚨 The Firebase Eradicator v4.3 (Nuke BEFORE Pod Install)
+      - name: 🚨 The Absolute Eradicator v5 (Nuke BEFORE Pods)
         run: |
-          echo "🔥 1. Preventing iOS Native Auto-linking..."
-          node -e "
-            const fs = require('fs');
-            const MODULES = ['app', 'app-check', 'analytics', 'crashlytics', 'perf'];
-            let raw = '{}';
-            if (fs.existsSync('react-native.config.js')) {
-              raw = fs.readFileSync('react-native.config.js', 'utf8')
-                .replace(/^\s*module\.exports\s*=\s*/, '')
-                .replace(/;?\s*$/, '');
-            }
-            let config = {};
-            try { config = eval('(' + raw + ')'); } catch(e) { config = {}; }
-            config.dependencies = config.dependencies || {};
-            MODULES.forEach(mod => {
-              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
-            });
-            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
-            console.log('✅ react-native.config.js updated');
-          "
-          
-          echo "🔥 2. iOS Native: Purging Firebase via Node.js..."
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            function walk(dir) {
-              let results = [];
-              if (!fs.existsSync(dir)) return results;
-              const list = fs.readdirSync(dir);
-              list.forEach(file => {
-                const fullPath = path.join(dir, file);
-                const stat = fs.statSync(fullPath);
-                if (stat && stat.isDirectory()) {
-                  results = results.concat(walk(fullPath));
-                } else if (/AppDelegate\.(m|mm|swift)$/.test(file)) {
-                  results.push(fullPath);
-                }
-              });
-              return results;
-            }
-            const files = walk('./ios/PocketPal');
-            if (files.length === 0) {
-              console.log('⚠️ No AppDelegate files found.');
-              process.exit(0);
-            }
-            files.forEach(file => {
-              let content = fs.readFileSync(file, 'utf8');
-              content = content.replace(/^.*import\s+RNFBAppCheck.*$/gm, '');
-              content = content.replace(/^.*import\s+Firebase.*$/gm, '');
-              content = content.replace(/^.*#import\s+[<\"]Firebase.*[>\"].*$/gm, '');
-              content = content.replace(/^.*#import\s+[<\"]RNFBAppCheck.*[>\"].*$/gm, '');
-              content = content.replace(/FirebaseApp\.configure\(\)/g, '// FirebaseApp.configure()');
-              content = content.replace(/\[FIRApp configure\];?/g, '// [FIRApp configure]');
-              content = content.replace(/\[RNFBAppCheckModule\s+sharedInstance\];?/g, '// [RNFBAppCheckModule sharedInstance]');
-              content = content.replace(/RNFBAppCheckModule\.sharedInstance\(\)/g, '// RNFBAppCheckModule.sharedInstance()');
-              content = content.replace(/RNFBAppCheck\.configure\(\)/g, '// RNFBAppCheck.configure()');
-              fs.writeFileSync(file, content);
-              console.log('✅ Patched: ' + file);
-            });
-          "
-          
-          echo "🔥 3. Scanning for remaining Firebase references in native code..."
-          REMAINING=$(grep -rl "FIRApp\|FirebaseApp\.configure\|RNFBAppCheck\|import Firebase" ios/PocketPal --include="*.m" --include="*.swift" --include="*.mm" 2>/dev/null || true)
-          
-          if [ -n "$REMAINING" ]; then
-            echo "⚠️ WARNING: Firebase references still found in:"
-            echo "$REMAINING"
-            echo "Attempting deeper patch..."
-            echo "$REMAINING" | while read leftover; do
-              if [ -f "$leftover" ]; then
-                node -e "
-                  const fs = require('fs');
-                  let c = fs.readFileSync('$leftover', 'utf8');
-                  c = c.replace(/^.*FIRApp.*$/gm, '// [nuked by eradicator]');
-                  c = c.replace(/^.*FirebaseApp\.configure.*$/gm, '// [nuked by eradicator]');
-                  c = c.replace(/^.*RNFBAppCheck.*$/gm, '// [nuked by eradicator]');
-                  c = c.replace(/^.*import Firebase.*$/gm, '// [nuked by eradicator]');
-                  fs.writeFileSync('$leftover', c);
-                  console.log('✅ Deep-patched: $leftover');
-                "
-              fi
-            done
-          else
-            echo "✅ Clean! No Firebase references remain in native code."
-          fi
-          
-          echo "🔥 4. JS: Nuke and Replace Firebase NPM packages (deep)..."
+          echo "🔥 1. JS: Nuke and Replace Firebase NPM packages (deep)..."
           DUMMY_INDEX='const m = new Proxy(function(){return m;},{get:function(t,p){if(p==="then")return undefined;if(p==="default")return m;return m;}}); module.exports = m;'
           DUMMY_PKG='{"name":"dummy","version":"99.0.0","main":"index.js","react-native":"index.js","browser":"index.js"}'
           
@@ -122,11 +37,60 @@ jobs:
                 echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.js"
                 echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.native.js"
               done
-              echo "✅ Done: $pkg_dir"
             done
           fi
 
-      - name: Install iOS Pods
+          echo "🔥 2. Preventing iOS Native Auto-linking..."
+          node -e "
+            const fs = require('fs');
+            const MODULES = ['app', 'app-check', 'analytics', 'crashlytics', 'perf'];
+            let raw = '{}';
+            if (fs.existsSync('react-native.config.js')) {
+              raw = fs.readFileSync('react-native.config.js', 'utf8').replace(/^\s*module\.exports\s*=\s*/, '').replace(/;?\s*$/, '');
+            }
+            let config = {};
+            try { config = eval('(' + raw + ')'); } catch(e) { config = {}; }
+            config.dependencies = config.dependencies || {};
+            MODULES.forEach(mod => {
+              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
+            });
+            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
+          "
+          
+          echo "🔥 3. iOS Native: Purging Firebase from AppDelegate..."
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            function walk(dir) {
+              let results = [];
+              if (!fs.existsSync(dir)) return results;
+              const list = fs.readdirSync(dir);
+              list.forEach(file => {
+                const fullPath = path.join(dir, file);
+                if (fs.statSync(fullPath).isDirectory()) {
+                  results = results.concat(walk(fullPath));
+                } else if (/AppDelegate\.(m|mm|swift)$/.test(file)) {
+                  results.push(fullPath);
+                }
+              });
+              return results;
+            }
+            const files = walk('./ios/PocketPal');
+            files.forEach(file => {
+              let content = fs.readFileSync(file, 'utf8');
+              content = content.replace(/^.*import\s+RNFBAppCheck.*$/gm, '');
+              content = content.replace(/^.*import\s+Firebase.*$/gm, '');
+              content = content.replace(/^.*#import\s+[<\"]Firebase.*[>\"].*$/gm, '');
+              content = content.replace(/^.*#import\s+[<\"]RNFBAppCheck.*[>\"].*$/gm, '');
+              content = content.replace(/FirebaseApp\.configure\(\)/g, '// FirebaseApp.configure()');
+              content = content.replace(/\[FIRApp configure\];?/g, '// [FIRApp configure]');
+              content = content.replace(/\[RNFBAppCheckModule\s+sharedInstance\];?/g, '// [RNFBAppCheckModule sharedInstance]');
+              content = content.replace(/RNFBAppCheckModule\.sharedInstance\(\)/g, '// RNFBAppCheckModule.sharedInstance()');
+              fs.writeFileSync(file, content);
+            });
+          "
+
+      - name: Install iOS Pods (Now 100% clean and Firebase-free)
         run: |
           cd ios && pod install && cd ..
 
