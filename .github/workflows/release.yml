@@ -20,67 +20,6 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      - name: 🚨 The Firebase Eradicator v4 (Bulletproof Native & JS Nuke)
-        run: |
-          echo "🔥 1. Preventing iOS Native Auto-linking..."
-          node -e "
-            const fs = require('fs');
-            let config = {};
-            if (fs.existsSync('react-native.config.js')) {
-              try { config = require('./react-native.config.js'); } catch(e) {}
-            }
-            config.dependencies = config.dependencies || {};
-            ['app', 'app-check', 'analytics', 'crashlytics', 'perf'].forEach(mod => {
-              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
-            });
-            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
-          "
-          
-          echo "🔥 2. iOS Native: Purging Firebase via Node.js (Immune to formatting issues)..."
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            function walk(dir) {
-              let results = [];
-              const list = fs.readdirSync(dir);
-              list.forEach(file => {
-                file = path.join(dir, file);
-                const stat = fs.statSync(file);
-                if (stat && stat.isDirectory()) {
-                  results = results.concat(walk(file));
-                } else if (file.includes('AppDelegate')) {
-                  results.push(file);
-                }
-              });
-              return results;
-            }
-            const files = walk('./ios');
-            files.forEach(file => {
-              let content = fs.readFileSync(file, 'utf8');
-              // import文を物理的に行ごと消去
-              content = content.replace(/^.*import\s+RNFBAppCheck.*$/gm, '');
-              content = content.replace(/^.*import\s+Firebase.*$/gm, '');
-              content = content.replace(/^.*#import\s+<Firebase.*$/gm, '');
-              content = content.replace(/^.*#import\s+<RNFBAppCheck.*$/gm, '');
-              // 起動コードをコメントアウト
-              content = content.replace(/RNFBAppCheckModule\.sharedInstance\(\)/g, '// RNFBAppCheckModule.sharedInstance()');
-              content = content.replace(/\[FIRApp configure\]/g, '// [FIRApp configure]');
-              content = content.replace(/FirebaseApp\.configure\(\)/g, '// FirebaseApp.configure()');
-              fs.writeFileSync(file, content);
-              console.log('✅ Patched: ' + file);
-            });
-          "
-          
-          echo "🔥 3. JS: Nuke and Replace Firebase NPM packages..."
-          if [ -d "node_modules/@react-native-firebase" ]; then
-            find node_modules/@react-native-firebase -mindepth 1 -maxdepth 1 -type d | while read pkg_dir; do
-              echo "Nuking $pkg_dir"
-              rm -rf "$pkg_dir"/*
-              echo '{"name":"dummy","version":"99.0.0","main":"index.js"}' > "$pkg_dir/package.json"
-              echo 'const m = new Proxy(function(){return m;},{get:function(t,p){if(p==="then")return undefined;if(p==="default")return m;return m;}}); module.exports = m;' > "$pkg_dir/index.js"
-            done
-          fi
-
       - name: Install iOS Pods
         run: |
           cd ios && pod install && cd ..
@@ -110,6 +49,116 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
           /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
 
+      - name: 🚨 The Firebase Eradicator v4.2 (Bulletproof Native & JS Nuke)
+        run: |
+          echo "🔥 1. Preventing iOS Native Auto-linking..."
+          node -e "
+            const fs = require('fs');
+            const MODULES = ['app', 'app-check', 'analytics', 'crashlytics', 'perf'];
+            let raw = '{}';
+            if (fs.existsSync('react-native.config.js')) {
+              raw = fs.readFileSync('react-native.config.js', 'utf8')
+                .replace(/^\s*module\.exports\s*=\s*/, '')
+                .replace(/;?\s*$/, '');
+            }
+            let config = {};
+            try { config = eval('(' + raw + ')'); } catch(e) { config = {}; }
+            config.dependencies = config.dependencies || {};
+            MODULES.forEach(mod => {
+              config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
+            });
+            fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
+            console.log('✅ react-native.config.js updated');
+          "
+          
+          echo "🔥 2. iOS Native: Purging Firebase via Node.js..."
+          node -e "
+            const fs = require('fs');
+            const path = require('path');
+            function walk(dir) {
+              let results = [];
+              if (!fs.existsSync(dir)) return results;
+              const list = fs.readdirSync(dir);
+              list.forEach(file => {
+                const fullPath = path.join(dir, file);
+                const stat = fs.statSync(fullPath);
+                if (stat && stat.isDirectory()) {
+                  results = results.concat(walk(fullPath));
+                } else if (/AppDelegate\.(m|mm|swift)$/.test(file)) {
+                  results.push(fullPath);
+                }
+              });
+              return results;
+            }
+            // 修正: ios全体ではなく、PocketPalフォルダ（アプリ本体）だけをスキャンする
+            const files = walk('./ios/PocketPal');
+            if (files.length === 0) {
+              console.log('⚠️ No AppDelegate files found.');
+              process.exit(0);
+            }
+            files.forEach(file => {
+              let content = fs.readFileSync(file, 'utf8');
+              content = content.replace(/^.*import\s+RNFBAppCheck.*$/gm, '');
+              content = content.replace(/^.*import\s+Firebase.*$/gm, '');
+              content = content.replace(/^.*#import\s+[<\"]Firebase.*[>\"].*$/gm, '');
+              content = content.replace(/^.*#import\s+[<\"]RNFBAppCheck.*[>\"].*$/gm, '');
+              content = content.replace(/FirebaseApp\.configure\(\)/g, '// FirebaseApp.configure()');
+              content = content.replace(/\[FIRApp configure\];?/g, '// [FIRApp configure]');
+              content = content.replace(/\[RNFBAppCheckModule\s+sharedInstance\];?/g, '// [RNFBAppCheckModule sharedInstance]');
+              content = content.replace(/RNFBAppCheckModule\.sharedInstance\(\)/g, '// RNFBAppCheckModule.sharedInstance()');
+              content = content.replace(/RNFBAppCheck\.configure\(\)/g, '// RNFBAppCheck.configure()');
+              fs.writeFileSync(file, content);
+              console.log('✅ Patched: ' + file);
+            });
+          "
+          
+          echo "🔥 3. Scanning for remaining Firebase references in native code..."
+          # 修正: Podsを巻き込まないように ios/PocketPal のみに検索範囲を限定
+          REMAINING=$(grep -rl "FIRApp\|FirebaseApp\.configure\|RNFBAppCheck\|import Firebase" ios/PocketPal --include="*.m" --include="*.swift" --include="*.mm" 2>/dev/null || true)
+          
+          if [ -n "$REMAINING" ]; then
+            echo "⚠️ WARNING: Firebase references still found in:"
+            echo "$REMAINING"
+            echo "Attempting deeper patch..."
+            echo "$REMAINING" | while read leftover; do
+              if [ -f "$leftover" ]; then
+                node -e "
+                  const fs = require('fs');
+                  let c = fs.readFileSync('$leftover', 'utf8');
+                  c = c.replace(/^.*FIRApp.*$/gm, '// [nuked by eradicator]');
+                  c = c.replace(/^.*FirebaseApp\.configure.*$/gm, '// [nuked by eradicator]');
+                  c = c.replace(/^.*RNFBAppCheck.*$/gm, '// [nuked by eradicator]');
+                  c = c.replace(/^.*import Firebase.*$/gm, '// [nuked by eradicator]');
+                  fs.writeFileSync('$leftover', c);
+                  console.log('✅ Deep-patched: $leftover');
+                "
+              fi
+            done
+          else
+            echo "✅ Clean! No Firebase references remain in native code."
+          fi
+          
+          echo "🔥 4. JS: Nuke and Replace Firebase NPM packages (deep)..."
+          DUMMY_INDEX='const m = new Proxy(function(){return m;},{get:function(t,p){if(p==="then")return undefined;if(p==="default")return m;return m;}}); module.exports = m;'
+          DUMMY_PKG='{"name":"dummy","version":"99.0.0","main":"index.js","react-native":"index.js","browser":"index.js"}'
+          
+          if [ -d "node_modules/@react-native-firebase" ]; then
+            find node_modules/@react-native-firebase -mindepth 1 -maxdepth 1 -type d | while read pkg_dir; do
+              echo "Nuking $pkg_dir"
+              rm -rf "$pkg_dir"/*
+              echo "$DUMMY_PKG" > "$pkg_dir/package.json"
+              echo "$DUMMY_INDEX" > "$pkg_dir/index.js"
+              for subdir in lib src commonjs dist; do
+                mkdir -p "$pkg_dir/$subdir"
+                echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.js"
+                echo "$DUMMY_INDEX" > "$pkg_dir/$subdir/index.native.js"
+              done
+              echo "✅ Done: $pkg_dir"
+            done
+          else
+            echo "node_modules/@react-native-firebase not found. Skipping."
+          fi
+
       - name: Build iOS App
         run: |
           WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
@@ -132,10 +181,11 @@ jobs:
           
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
-            echo "Error: Payload is too small ($SIZE_KB KB)."
+            echo "❌ Error: Payload is too small ($SIZE_KB KB). Build likely failed."
             exit 1
           fi
           zip -r MyLLM.ipa Payload
+          echo "✅ IPA created successfully (${SIZE_KB} KB)"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
