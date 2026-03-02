@@ -22,6 +22,7 @@ jobs:
 
       - name: Install iOS Pods
         run: |
+          # プログラムを一切削らず、通常通りインストールする（パニック防止）
           cd ios && pod install && cd ..
 
       - name: Fix Node Path for Xcode
@@ -99,8 +100,9 @@ jobs:
           mkdir -p Payload
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
           
-          # 【最重要】錬成したダミーplistを、完成したアプリの内部に強制コピーする
-          cp ios/GoogleService-Info.plist Payload/*.app/ || true
+          # 【最重要】錬成したダミーplistを、完成したアプリの内部に確実に強制コピーする
+          APP_DIR=$(find Payload -name "*.app" -type d | head -n 1)
+          cp ios/GoogleService-Info.plist "$APP_DIR/"
           echo "✅ Dummy Plist Injected!"
           
           SIZE_KB=$(du -sk Payload | cut -f1)
