@@ -20,7 +20,7 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      - name: 🚨 The Firebase Eradicator v2 (Fix Build Error)
+      - name: 🚨 The Firebase Eradicator v3 (Ultimate JS Nuke)
         run: |
           echo "🔥 1. Preventing iOS Native Auto-linking..."
           node -e "
@@ -30,7 +30,7 @@ jobs:
               try { config = require('./react-native.config.js'); } catch(e) {}
             }
             config.dependencies = config.dependencies || {};
-            ['app', 'app-check', 'analytics'].forEach(mod => {
+            ['app', 'app-check', 'analytics', 'crashlytics', 'perf'].forEach(mod => {
               config.dependencies[\`@react-native-firebase/\${mod}\`] = { platforms: { ios: null, android: null } };
             });
             fs.writeFileSync('react-native.config.js', 'module.exports = ' + JSON.stringify(config, null, 2) + ';');
@@ -40,37 +40,25 @@ jobs:
           # AppDelegate.* (swift, mm, m) を探して、Firebase関連の行を物理削除・無効化
           find ios -name "AppDelegate*" -type f | while read file; do
             echo "Patching $file ..."
-            # Objective-C / Swift 両方の import 記述を削除
             sed -i '' '/import RNFBAppCheck/d' "$file" || true
             sed -i '' '/import Firebase/d' "$file" || true
             sed -i '' '/#import <Firebase.h>/d' "$file" || true
             sed -i '' '/#import <RNFBAppCheck\/RNFBAppCheckModule.h>/d' "$file" || true
-            
-            # 初期化コードを無効化
             sed -i '' 's/RNFBAppCheckModule.sharedInstance()/\/\/ RNFBAppCheckModule.sharedInstance()/g' "$file" || true
             sed -i '' 's/\[FIRApp configure\]/\/\/ \[FIRApp configure\]/g' "$file" || true
             sed -i '' 's/FirebaseApp.configure()/\/\/ FirebaseApp.configure()/g' "$file" || true
           done
           
-          echo "🔥 3. JS: Mocking Firebase to prevent JS panic..."
-          cat << 'EOF' > proxy-mock.js
-          const universalMock = new Proxy(() => universalMock, {
-            get: (target, prop) => {
-              if (prop === 'then') return undefined;
-              return universalMock;
-            },
-            apply: () => universalMock
-          });
-          module.exports = universalMock;
-          EOF
-          
-          mkdir -p node_modules/@react-native-firebase/app/lib
-          mkdir -p node_modules/@react-native-firebase/app-check/lib
-          mkdir -p node_modules/@react-native-firebase/analytics/lib
-          
-          cp proxy-mock.js node_modules/@react-native-firebase/app/lib/index.js
-          cp proxy-mock.js node_modules/@react-native-firebase/app-check/lib/index.js
-          cp proxy-mock.js node_modules/@react-native-firebase/analytics/lib/index.js
+          echo "🔥 3. JS: Nuke and Replace Firebase NPM packages..."
+          # node_modules内のFirebase関連パッケージを中身ごと完全に消し飛ばし、ダミーにすり替える
+          if [ -d "node_modules/@react-native-firebase" ]; then
+            find node_modules/@react-native-firebase -mindepth 1 -maxdepth 1 -type d | while read pkg_dir; do
+              echo "Nuking $pkg_dir"
+              rm -rf "$pkg_dir"/*
+              echo '{"name":"dummy","version":"99.0.0","main":"index.js"}' > "$pkg_dir/package.json"
+              echo 'const m = new Proxy(function(){return m;},{get:function(t,p){if(p==="then")return undefined;if(p==="default")return m;return m;}}); module.exports = m;' > "$pkg_dir/index.js"
+            done
+          fi
 
       - name: Install iOS Pods
         run: |
