@@ -1,4 +1,4 @@
-name: Release Workflow (Pacifier Route)
+name: Release Workflow (Perfect Pacifier)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,6 @@ jobs:
 
       - name: Install iOS Pods
         run: |
-          # Firebaseも含め、すべて「通常通り」インストールしてパニックを防ぐ
           cd ios && pod install && cd ..
 
       - name: Fix Node Path for Xcode
@@ -30,18 +29,47 @@ jobs:
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
-      - name: Create missing config files
+      - name: 🕊️ Create Perfect Dummy Plist
         run: |
           mkdir -p ios/Config
           touch ios/Config/Env.xcconfig
           echo "// Dummy config" > ios/Config/Env.xcconfig
           
-          # Xcodeのビルドエラー回避用の「抜け殻plist」
+          # Firebaseを完全に騙し切る、必須項目をすべて網羅した完璧なダミー設定ファイル
           cat << 'EOF' > ios/GoogleService-Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
-          <dict></dict>
+          <dict>
+            <key>CLIENT_ID</key>
+            <string>dummy.apps.googleusercontent.com</string>
+            <key>REVERSED_CLIENT_ID</key>
+            <string>com.googleusercontent.apps.dummy</string>
+            <key>API_KEY</key>
+            <string>dummy_api_key_1234567890</string>
+            <key>GCM_SENDER_ID</key>
+            <string>1234567890</string>
+            <key>PLIST_VERSION</key>
+            <string>1</string>
+            <key>BUNDLE_ID</key>
+            <string>ai.pocketpal.VCFA343Q28</string>
+            <key>PROJECT_ID</key>
+            <string>dummy-project</string>
+            <key>STORAGE_BUCKET</key>
+            <string>dummy-project.appspot.com</string>
+            <key>IS_ADS_ENABLED</key>
+            <false/>
+            <key>IS_ANALYTICS_ENABLED</key>
+            <false/>
+            <key>IS_APPINVITE_ENABLED</key>
+            <false/>
+            <key>IS_GCM_ENABLED</key>
+            <false/>
+            <key>IS_SIGNIN_ENABLED</key>
+            <false/>
+            <key>GOOGLE_APP_ID</key>
+            <string>1:1234567890:ios:abcdef123456</string>
+          </dict>
           </plist>
           EOF
 
@@ -50,45 +78,6 @@ jobs:
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
           /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
           /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
-
-      - name: 🕊️ The Firebase Pacifier (Peaceful Injection)
-        run: |
-          echo "🔥 Pacifying Firebase: Injecting dummy options instead of deleting..."
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            function walk(dir) {
-              let results = [];
-              if (!fs.existsSync(dir)) return results;
-              const list = fs.readdirSync(dir);
-              list.forEach(file => {
-                const fullPath = path.join(dir, file);
-                if (fs.statSync(fullPath).isDirectory()) {
-                  results = results.concat(walk(fullPath));
-                } else if (file === 'AppDelegate.swift') {
-                  results.push(fullPath);
-                }
-              });
-              return results;
-            }
-            const files = walk('./ios/PocketPal');
-            files.forEach(file => {
-              let content = fs.readFileSync(file, 'utf8');
-              
-              // FirebaseApp.configure() を、ダミーのオプションを使った安全な初期化にすり替える
-              const dummyInit = [
-                'let dummyOptions = FirebaseOptions(googleAppID: \"1:1234567890:ios:abcdef123456\", gcmSenderID: \"1234567890\")',
-                'dummyOptions.projectID = \"dummy-project\"',
-                'dummyOptions.apiKey = \"dummy_api_key_1234567890\"',
-                'dummyOptions.clientID = \"dummy.apps.googleusercontent.com\"',
-                'FirebaseApp.configure(options: dummyOptions)'
-              ].join('\n');
-              
-              content = content.replace(/FirebaseApp\.configure\(\)/g, dummyInit);
-              fs.writeFileSync(file, content);
-              console.log('✅ Pacified: ' + file);
-            });
-          "
 
       - name: Build iOS App
         run: |
@@ -110,13 +99,16 @@ jobs:
           mkdir -p Payload
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
           
+          # 【最重要】錬成したダミーplistを、完成したアプリの内部に強制コピーする
+          cp ios/GoogleService-Info.plist Payload/*.app/ || true
+          echo "✅ Dummy Plist Injected!"
+          
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
-            echo "❌ Error: Payload is too small ($SIZE_KB KB). Build likely failed."
+            echo "❌ Error: Payload is too small ($SIZE_KB KB)."
             exit 1
           fi
           zip -r MyLLM.ipa Payload
-          echo "✅ IPA created successfully (${SIZE_KB} KB)"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
