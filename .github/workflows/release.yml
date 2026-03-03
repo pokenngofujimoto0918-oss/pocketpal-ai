@@ -1,4 +1,4 @@
-name: Release Workflow (Auto-link Disable v3 - Correct Order)
+name: Release Workflow (Perfect Bypass)
 
 on:
   workflow_dispatch:
@@ -20,115 +20,117 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      - name: Disable Auto-linking BEFORE pod install
+      # 🥷 新・最重要ステップ：Auto-linkingは生かしつつ、ネイティブの中身とPodspecを無害化する
+      - name: '🥷 Step 1: Neutralize Keychain Native Code & Podspec'
         run: |
+          echo "Executing Ultimate Ghost Native Stub for react-native-keychain..."
+          KEYCHAIN_DIR="node_modules/react-native-keychain"
+          
+          # RNKeychainManager.m の場所を自動検索してディレクトリを特定
+          TARGET_FILE=$(find "$KEYCHAIN_DIR" -name "RNKeychainManager.m" | head -n 1)
+          if [ -n "$TARGET_FILE" ]; then
+            KEYCHAIN_IOS_DIR=$(dirname "$TARGET_FILE")
+            echo "Found RNKeychainManager at: $KEYCHAIN_IOS_DIR"
+            
+            # 1. ヘッダーファイルの無害化
+            cat > "$KEYCHAIN_IOS_DIR/RNKeychainManager.h" << 'EOF'
+          #import <React/RCTBridgeModule.h>
+          @interface RNKeychainManager : NSObject <RCTBridgeModule>
+          @end
+          EOF
+            
+            # 2. 実装ファイルの無害化（全て成功・または安全に失敗させる）
+            cat > "$KEYCHAIN_IOS_DIR/RNKeychainManager.m" << 'EOF'
+          #import "RNKeychainManager.h"
+          @implementation RNKeychainManager
+          RCT_EXPORT_MODULE(RNKeychainManager);
+          + (BOOL)requiresMainQueueSetup { return NO; }
+          
+          RCT_EXPORT_METHOD(setGenericPasswordForOptions:(NSDictionary *)options withUsername:(NSString *)username withPassword:(NSString *)password resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
+          RCT_EXPORT_METHOD(getGenericPasswordForOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
+          RCT_EXPORT_METHOD(resetGenericPasswordForOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
+          RCT_EXPORT_METHOD(setInternetCredentialsForServer:(NSString *)server withUsername:(NSString *)username withPassword:(NSString *)password withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
+          RCT_EXPORT_METHOD(getInternetCredentialsForServer:(NSString *)server withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
+          RCT_EXPORT_METHOD(resetInternetCredentialsForServer:(NSString *)server withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
+          RCT_EXPORT_METHOD(getSupportedBiometryType:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve([NSNull null]); }
+          RCT_EXPORT_METHOD(canCheckAuthentication:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
+          RCT_EXPORT_METHOD(getAllGenericPasswordServices:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@[]); }
+          RCT_EXPORT_METHOD(hasGenericPasswordForOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
+          RCT_EXPORT_METHOD(hasInternetCredentialsForServer:(NSString *)server withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
+          RCT_EXPORT_METHOD(isPasscodeAuthAvailable:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
+          @end
+          EOF
+            
+            # 3. PodspecからSecurityフレームワークの依存を剥奪（リンカーエラー回避）
+            PODSPEC_PATH="$KEYCHAIN_DIR/RNKeychain.podspec"
+            if [ -f "$PODSPEC_PATH" ]; then
+              sed -i '' -e 's/s\.frameworks\s*=.*/s.frameworks = []/' "$PODSPEC_PATH"
+              echo "✅ Podspec neutered."
+            fi
+            echo "✅ Native files neutered successfully."
+          else
+            echo "⚠️ RNKeychainManager.m not found. Skipping."
+          fi
+
+      # 👻 JS側を騙すためのメモリモック（フォルダは消さずにindex.jsだけ上書き）
+      - name: '👻 Step 2: Mock Keychain JS'
+        run: |
+          echo "Mocking react-native-keychain JS side..."
           node -e "
             const fs = require('fs');
-
-            let existing = {};
-            if (fs.existsSync('react-native.config.js')) {
-              const raw = fs.readFileSync('react-native.config.js', 'utf8')
-                .replace(/^\s*module\.exports\s*=\s*/, '')
-                .replace(/;?\s*$/, '');
-              try { existing = eval('(' + raw + ')'); } catch(e) {}
+            const path = require('path');
+            const pkgDir = path.join('node_modules', 'react-native-keychain');
+            if (fs.existsSync(pkgDir)) {
+              const mockCode = \`
+                const _store = {};
+                const mock = {
+                  setGenericPassword: (u, p, o) => { _store[(o&&o.service)||'default'] = {username: u, password: p}; return Promise.resolve(true); },
+                  getGenericPassword: (o) => Promise.resolve(_store[(o&&o.service)||'default'] || false),
+                  resetGenericPassword: (o) => { delete _store[(o&&o.service)||'default']; return Promise.resolve(true); },
+                  setInternetPassword: (s, u, p) => { _store[s] = {username: u, password: p}; return Promise.resolve(true); },
+                  getInternetPassword: (s) => Promise.resolve(_store[s] || false),
+                  resetInternetPassword: (s) => { delete _store[s]; return Promise.resolve(true); },
+                  getAllGenericPasswordServices: () => Promise.resolve([]),
+                  hasInternetCredentials: (s) => Promise.resolve(!!_store[s]),
+                  requestSharedWebCredentials: () => Promise.resolve(false),
+                  setSharedWebCredentials: () => Promise.resolve(),
+                  getSecurityLevel: () => Promise.resolve('SECURE_HARDWARE'),
+                  getSupportedBiometryType: () => Promise.resolve(null),
+                  canImplyAuthentication: () => Promise.resolve(false),
+                  ACCESS_CONTROL: {}, ACCESSIBLE: {}, AUTHENTICATION_TYPE: {}, BIOMETRY_TYPE: {}, SECURITY_LEVEL: {}, SECURITY_RULES: {}, STORAGE_TYPE: {},
+                };
+                module.exports = mock;
+                module.exports.default = mock;
+              \`;
+              fs.writeFileSync(path.join(pkgDir, 'index.js'), mockCode);
+              console.log('✅ Keychain JS mocked successfully.');
             }
-
-            existing.dependencies = existing.dependencies || {};
-            existing.dependencies['react-native-keychain'] = {
-              platforms: { ios: null, android: null }
-            };
-
-            fs.writeFileSync(
-              'react-native.config.js',
-              'module.exports = ' + JSON.stringify(existing, null, 2) + ';\n'
-            );
-            console.log('react-native.config.js updated (before pod install)');
-            console.log(fs.readFileSync('react-native.config.js', 'utf8'));
           "
 
+      # 📦 無害化された状態でPodをインストール（Xcodeはダミーを正規ファイルとしてビルドする）
       - name: Install iOS Pods
         run: |
           cd ios && pod install && cd ..
 
+      # Xcode用のNodeパス修正
       - name: Fix Node Path for Xcode
         run: |
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
-      - name: JS Mock - Replace react-native-keychain with memory mock
+      # 🧹 エンタイトルメントファイルからKeychainの要求を剥奪（署名エラー回避）
+      - name: '🧹 Step 2.5: Strip Entitlements'
         run: |
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            const pkgDir = path.join('node_modules', 'react-native-keychain');
+          find ios -name "*.entitlements" -exec /usr/libexec/PlistBuddy -c "Delete keychain-access-groups" {} \; 2>/dev/null || true
+          echo "✅ Entitlements stripped."
 
-            if (!fs.existsSync(pkgDir)) {
-              console.log('react-native-keychain not found. Skipping.');
-              process.exit(0);
-            }
-
-            const mockContent = [
-              \"'use strict';\",
-              'const _store = {};',
-              'const mock = {',
-              '  setGenericPassword: (user, pass, opts) => {',
-              \"    const key = (opts && opts.service) || 'default';\",
-              '    _store[key] = { username: user, password: pass };',
-              '    return Promise.resolve(true);',
-              '  },',
-              '  getGenericPassword: (opts) => {',
-              \"    const key = (opts && opts.service) || 'default';\",
-              '    return Promise.resolve(_store[key] || false);',
-              '  },',
-              '  resetGenericPassword: (opts) => {',
-              \"    const key = (opts && opts.service) || 'default';\",
-              '    delete _store[key];',
-              '    return Promise.resolve(true);',
-              '  },',
-              '  setInternetPassword: (server, user, pass) => {',
-              '    _store[server] = { username: user, password: pass };',
-              '    return Promise.resolve(true);',
-              '  },',
-              '  getInternetPassword: (server) => Promise.resolve(_store[server] || false),',
-              '  resetInternetPassword: (server) => { delete _store[server]; return Promise.resolve(true); },',
-              '  getAllGenericPasswordServices: () => Promise.resolve([]),',
-              '  hasInternetCredentials: (server) => Promise.resolve(!!_store[server]),',
-              '  requestSharedWebCredentials: () => Promise.resolve(false),',
-              '  setSharedWebCredentials: () => Promise.resolve(),',
-              \"  getSecurityLevel: () => Promise.resolve('SECURE_HARDWARE'),\",
-              '  getSupportedBiometryType: () => Promise.resolve(null),',
-              '  canImplyAuthentication: () => Promise.resolve(false),',
-              '  ACCESS_CONTROL: {},',
-              '  ACCESSIBLE: {},',
-              '  AUTHENTICATION_TYPE: {},',
-              '  BIOMETRY_TYPE: {},',
-              '  SECURITY_LEVEL: {},',
-              '  SECURITY_RULES: {},',
-              '  STORAGE_TYPE: {},',
-              '};',
-              'module.exports = mock;',
-              'module.exports.default = mock;',
-            ].join('\n');
-
-            fs.writeFileSync(path.join(pkgDir, 'index.js'), mockContent);
-
-            ['lib', 'src', 'commonjs', 'dist'].forEach(sub => {
-              const subDir = path.join(pkgDir, sub);
-              if (fs.existsSync(subDir)) {
-                ['index.js', 'index.native.js'].forEach(f => {
-                  const fp = path.join(subDir, f);
-                  if (fs.existsSync(fp)) {
-                    fs.writeFileSync(fp, \"module.exports = require('../index.js');\n\");
-                  }
-                });
-              }
-            });
-
-            console.log('react-native-keychain JS replaced with memory mock.');
-          "
-
-      - name: Create Perfect Dummy GoogleService-Info.plist
+      # 🕊️ Firebase対策は「ダミーPlist」を継続（平和的解決）
+      - name: '🕊️ Step 3: Create Perfect Dummy Plist for Firebase'
         run: |
+          mkdir -p ios/Config
+          touch ios/Config/Env.xcconfig
+          echo "// Dummy config" > ios/Config/Env.xcconfig
+          
           cat << 'EOF' > ios/GoogleService-Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -152,46 +154,11 @@ jobs:
           </plist>
           EOF
 
-      - name: Create missing config files
-        run: |
-          mkdir -p ios/Config
-          echo "// Dummy config" > ios/Config/Env.xcconfig
-
       - name: Enable iTunes File Sharing
         run: |
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
-          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" \
-            || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
-          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" \
-            || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
-
-      - name: Pre-build Sanity Check
-        run: |
-          echo "=== react-native.config.js ==="
-          cat react-native.config.js
-
-          echo ""
-          echo "=== Podfile.lock: RNKeychain should NOT be present ==="
-          if grep -q "RNKeychain" ios/Podfile.lock 2>/dev/null; then
-            echo "WARNING: RNKeychain is still in Podfile.lock!"
-            grep "RNKeychain" ios/Podfile.lock
-          else
-            echo "OK: RNKeychain is NOT in Podfile.lock. Auto-linking successfully disabled."
-          fi
-
-          echo ""
-          echo "=== JS mock check ==="
-          if grep -q "memory mock\|_store" node_modules/react-native-keychain/index.js 2>/dev/null; then
-            echo "OK: JS memory mock is in place."
-          else
-            echo "WARNING: JS mock may not be applied correctly."
-          fi
-
-          echo ""
-          echo "=== Native header existence check ==="
-          ls node_modules/react-native-keychain/ios/RNKeychainManager/RNKeychainManager.h 2>/dev/null \
-            && echo "OK: Native header exists (safe)." \
-            || echo "WARNING: Native header missing."
+          /usr/libexec/PlistBuddy -c "Add :UIFileSharingEnabled bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :UIFileSharingEnabled bool true" "$PLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Add :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Set :LSSupportsOpeningDocumentsInPlace bool true" "$PLIST_PATH"
 
       - name: Build iOS App
         run: |
@@ -212,17 +179,16 @@ jobs:
         run: |
           mkdir -p Payload
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
-
+          
+          # ダミーPlistをアプリ内に注入
           cp ios/GoogleService-Info.plist Payload/*.app/ || true
-
+          
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
-            echo "Error: Payload is too small (${SIZE_KB} KB). Build likely failed silently."
+            echo "❌ Error: Payload is too small ($SIZE_KB KB)."
             exit 1
           fi
-
           zip -r MyLLM.ipa Payload
-          echo "IPA created successfully (${SIZE_KB} KB)"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
