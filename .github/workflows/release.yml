@@ -50,7 +50,7 @@ jobs:
               fs.writeFileSync(path.join(pkgDir, 'index.js'), mockCode);
             }
           "
-          # Firebaseのモック化（app-checkを追加）
+          # Firebaseのモック化（app-checkを含む）
           node -e "
             const fs = require('fs'); const path = require('path');
             const modules = ['app', 'analytics', 'crashlytics', 'app-check'];
@@ -79,6 +79,18 @@ jobs:
         run: |
           mkdir -p ios/Config
           echo "// Empty config" > ios/Config/Env.xcconfig
+
+      # 🔧 さらに追加：Firebaseの設定ファイルがないというエラーを回避するダミー
+      - name: Create dummy GoogleService-Info.plist
+        run: |
+          cat <<EOF > ios/GoogleService-Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+          </dict>
+          </plist>
+          EOF
 
       # 📁 ファイルアプリからGGUFモデルを読み込めるようにする設定
       - name: Enable iTunes File Sharing
