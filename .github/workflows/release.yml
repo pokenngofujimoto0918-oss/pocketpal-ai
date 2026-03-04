@@ -64,7 +64,7 @@ jobs:
               sed -i '' -e 's/s\.frameworks\s*=.*/s.frameworks = []/' "$PODSPEC_PATH"
             fi
             
-            # 🔍 Manus AI提案：書き換えた証拠をCIログに出力する
+            # 🔍 書き換えた証拠をCIログに出力する
             echo "--- Content of RNKeychainManager.h ---"
             cat "$KEYCHAIN_IOS_DIR/RNKeychainManager.h"
             echo "--- Content of RNKeychainManager.m ---"
