@@ -74,6 +74,12 @@ jobs:
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
+      # 🔧 追加：Xcodeのビルドエラー（Env.xcconfigが見つからない）を回避する
+      - name: Create missing Env.xcconfig
+        run: |
+          mkdir -p ios/Config
+          echo "// Empty config" > ios/Config/Env.xcconfig
+
       # 📁 ファイルアプリからGGUFモデルを読み込めるようにする設定
       - name: Enable iTunes File Sharing
         run: |
