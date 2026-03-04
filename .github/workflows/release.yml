@@ -1,4 +1,4 @@
-name: Release Workflow (Perfect Bypass)
+name: Release Workflow (Perfect Offline)
 
 on:
   workflow_dispatch:
@@ -20,71 +20,15 @@ jobs:
           corepack enable
           yarn install --network-timeout 1000000
 
-      # 🥷 新・最重要ステップ：ネイティブの中身とPodspecを無害化し、証拠をログに残す
-      - name: '🥷 Step 1: Neutralize Keychain Native Code & Podspec'
+      # 👻 画面(JS)側だけを騙すメモリモック（UIのエラー回避用）
+      - name: '👻 Step 1: Mock Keychain & Firebase JS'
         run: |
-          echo "Executing Ultimate Ghost Native Stub for react-native-keychain..."
-          KEYCHAIN_DIR="node_modules/react-native-keychain"
-          
-          TARGET_FILE=$(find "$KEYCHAIN_DIR" -name "RNKeychainManager.m" | head -n 1)
-          if [ -n "$TARGET_FILE" ]; then
-            KEYCHAIN_IOS_DIR=$(dirname "$TARGET_FILE")
-            
-            # 1. ヘッダーファイルの無害化
-            cat > "$KEYCHAIN_IOS_DIR/RNKeychainManager.h" << 'EOF'
-          #import <React/RCTBridgeModule.h>
-          @interface RNKeychainManager : NSObject <RCTBridgeModule>
-          @end
-          EOF
-            
-            # 2. 実装ファイルの無害化
-            cat > "$KEYCHAIN_IOS_DIR/RNKeychainManager.m" << 'EOF'
-          #import "RNKeychainManager.h"
-          @implementation RNKeychainManager
-          RCT_EXPORT_MODULE(RNKeychainManager);
-          + (BOOL)requiresMainQueueSetup { return NO; }
-          RCT_EXPORT_METHOD(setGenericPasswordForOptions:(NSDictionary *)options withUsername:(NSString *)username withPassword:(NSString *)password resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
-          RCT_EXPORT_METHOD(getGenericPasswordForOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
-          RCT_EXPORT_METHOD(resetGenericPasswordForOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
-          RCT_EXPORT_METHOD(setInternetCredentialsForServer:(NSString *)server withUsername:(NSString *)username withPassword:(NSString *)password withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
-          RCT_EXPORT_METHOD(getInternetCredentialsForServer:(NSString *)server withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
-          RCT_EXPORT_METHOD(resetInternetCredentialsForServer:(NSString *)server withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@YES); }
-          RCT_EXPORT_METHOD(getSupportedBiometryType:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve([NSNull null]); }
-          RCT_EXPORT_METHOD(canCheckAuthentication:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
-          RCT_EXPORT_METHOD(getAllGenericPasswordServices:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@[]); }
-          RCT_EXPORT_METHOD(hasGenericPasswordForOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
-          RCT_EXPORT_METHOD(hasInternetCredentialsForServer:(NSString *)server withOptions:(NSDictionary *)options resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
-          RCT_EXPORT_METHOD(isPasscodeAuthAvailable:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) { resolve(@NO); }
-          @end
-          EOF
-            
-            # 3. Podspec無害化
-            PODSPEC_PATH="$KEYCHAIN_DIR/RNKeychain.podspec"
-            if [ -f "$PODSPEC_PATH" ]; then
-              sed -i '' -e 's/s\.frameworks\s*=.*/s.frameworks = []/' "$PODSPEC_PATH"
-            fi
-            
-            # 🔍 書き換えた証拠をCIログに出力する
-            echo "--- Content of RNKeychainManager.h ---"
-            cat "$KEYCHAIN_IOS_DIR/RNKeychainManager.h"
-            echo "--- Content of RNKeychainManager.m ---"
-            cat "$KEYCHAIN_IOS_DIR/RNKeychainManager.m"
-            echo "--- Content of Podspec frameworks ---"
-            grep "s.frameworks" "$PODSPEC_PATH" || echo "No frameworks line found."
-            
-          else
-            echo "⚠️ RNKeychainManager.m not found."
-          fi
-
-      - name: '👻 Step 2: Mock Keychain JS'
-        run: |
+          # Keychainのモック化
           node -e "
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require('fs'); const path = require('path');
             const pkgDir = path.join('node_modules', 'react-native-keychain');
             if (fs.existsSync(pkgDir)) {
               const mockCode = \`
-                const _store = {};
                 const mock = {
                   setGenericPassword: () => Promise.resolve(true),
                   getGenericPassword: () => Promise.resolve(false),
@@ -101,13 +45,26 @@ jobs:
                   canImplyAuthentication: () => Promise.resolve(false),
                   ACCESS_CONTROL: {}, ACCESSIBLE: {}, AUTHENTICATION_TYPE: {}, BIOMETRY_TYPE: {}, SECURITY_LEVEL: {}, SECURITY_RULES: {}, STORAGE_TYPE: {},
                 };
-                module.exports = mock;
-                module.exports.default = mock;
+                module.exports = mock; module.exports.default = mock;
               \`;
               fs.writeFileSync(path.join(pkgDir, 'index.js'), mockCode);
             }
           "
+          # Firebaseのモック化
+          node -e "
+            const fs = require('fs'); const path = require('path');
+            const modules = ['app', 'analytics', 'crashlytics'];
+            modules.forEach(mod => {
+              const modDir = path.join('node_modules', '@react-native-firebase', mod);
+              if (fs.existsSync(modDir)) {
+                const libDir = path.join(modDir, 'lib');
+                if (!fs.existsSync(libDir)) fs.mkdirSync(libDir, { recursive: true });
+                fs.writeFileSync(path.join(libDir, 'index.js'), 'module.exports = { default: () => ({}) };');
+              }
+            });
+          "
 
+      # 🧹 不要なPodを排除した状態でインストール
       - name: Install iOS Pods
         run: |
           cd ios && pod install && cd ..
@@ -117,32 +74,7 @@ jobs:
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
-      - name: '🧹 Step 2.5: Strip Entitlements'
-        run: |
-          find ios -name "*.entitlements" -exec /usr/libexec/PlistBuddy -c "Delete keychain-access-groups" {} \; 2>/dev/null || true
-
-      - name: '🕊️ Step 3: Create Perfect Dummy Plist for Firebase'
-        run: |
-          mkdir -p ios/Config
-          touch ios/Config/Env.xcconfig
-          echo "// Dummy config" > ios/Config/Env.xcconfig
-          cat << 'EOF' > ios/GoogleService-Info.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CLIENT_ID</key><string>dummy.apps.googleusercontent.com</string>
-            <key>REVERSED_CLIENT_ID</key><string>com.googleusercontent.apps.dummy</string>
-            <key>API_KEY</key><string>dummy_api_key_1234567890</string>
-            <key>GCM_SENDER_ID</key><string>1234567890</string>
-            <key>PLIST_VERSION</key><string>1</string>
-            <key>BUNDLE_ID</key><string>ai.pocketpal.VCFA343Q28</string>
-            <key>PROJECT_ID</key><string>dummy-project</string>
-            <key>GOOGLE_APP_ID</key><string>1:1234567890:ios:abcdef123456</string>
-          </dict>
-          </plist>
-          EOF
-
+      # 📁 ファイルアプリからGGUFモデルを読み込めるようにする設定（超重要）
       - name: Enable iTunes File Sharing
         run: |
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
@@ -168,9 +100,9 @@ jobs:
         run: |
           mkdir -p Payload
           find ./build_output -name "*.app" -type d -exec cp -R {} Payload/ \;
-          cp ios/GoogleService-Info.plist Payload/*.app/ || true
           SIZE_KB=$(du -sk Payload | cut -f1)
           if [ "$SIZE_KB" -lt 1000 ]; then
+            echo "❌ Error: Payload is too small ($SIZE_KB KB)."
             exit 1
           fi
           zip -r MyLLM.ipa Payload

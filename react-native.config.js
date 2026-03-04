@@ -1,7 +1,8 @@
 module.exports = {
-  project: {
-    ios: {},
-    android: {},
+  dependencies: {
+    'react-native-keychain': { platforms: { ios: null } },
+    '@react-native-firebase/app': { platforms: { ios: null } },
+    '@react-native-firebase/crashlytics': { platforms: { ios: null } },
+    '@react-native-firebase/analytics': { platforms: { ios: null } },
   },
-  assets: ['./src/assets/fonts'],
 };
