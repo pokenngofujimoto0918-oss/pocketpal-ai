@@ -50,10 +50,10 @@ jobs:
               fs.writeFileSync(path.join(pkgDir, 'index.js'), mockCode);
             }
           "
-          # Firebaseのモック化
+          # Firebaseのモック化（app-checkを追加）
           node -e "
             const fs = require('fs'); const path = require('path');
-            const modules = ['app', 'analytics', 'crashlytics'];
+            const modules = ['app', 'analytics', 'crashlytics', 'app-check'];
             modules.forEach(mod => {
               const modDir = path.join('node_modules', '@react-native-firebase', mod);
               if (fs.existsSync(modDir)) {
@@ -74,7 +74,7 @@ jobs:
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
-      # 📁 ファイルアプリからGGUFモデルを読み込めるようにする設定（超重要）
+      # 📁 ファイルアプリからGGUFモデルを読み込めるようにする設定
       - name: Enable iTunes File Sharing
         run: |
           PLIST_PATH=$(find ios -maxdepth 2 -name "Info.plist" | grep -v "Tests" | head -n 1)
