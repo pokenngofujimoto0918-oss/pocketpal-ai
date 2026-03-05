@@ -77,11 +77,14 @@ jobs:
           sudo ln -s $(which node) /usr/local/bin/node || true
           sudo ln -s $(which yarn) /usr/local/bin/yarn || true
 
-      # 🔧 追加：Xcodeのビルドエラー（Env.xcconfigが見つからない）を回避する
-      - name: Create missing Env.xcconfig
+# 🔧 追加：Xcodeのビルドエラー（設定ファイルの欠損）を回避するダミーファイル生成
+      - name: Create missing config files
         run: |
+          # Env.xcconfigのダミー
           mkdir -p ios/Config
           echo "// Empty config" > ios/Config/Env.xcconfig
+          # GoogleService-Info.plistのダミー（空のPlist）
+          echo '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict></dict></plist>' > ios/GoogleService-Info.plist
 
       # 📁 ファイルアプリからGGUFモデルを読み込めるようにする設定
       - name: Enable iTunes File Sharing
